@@ -5,14 +5,16 @@ from insar_unwrap.config import ConfigError, ExperimentConfig, load_config
 from .conftest import EXAMPLE_CONFIG
 
 
-def test_example_config_validates_without_data_present():
+def test_example_config_validates_without_data_present(example_dict, write_yaml, tmp_path):
     cfg = load_config(EXAMPLE_CONFIG)
     assert cfg.input.kind == "nisar_gunw"
     assert cfg.problem.sizes == [32, 64, 128, 256]
     assert cfg.problem.num_labels == 4
     assert cfg.problem.bits_per_pixel == 2
-    # The placeholder file must not exist; validation must not depend on it.
-    assert cfg.input.path is not None and not cfg.input.path.exists()
+    # Validation must not depend on the input file being present.
+    missing = tmp_path / "not-downloaded.h5"
+    example_dict["input"]["path"] = str(missing)
+    assert load_config(write_yaml(example_dict)).input.path == missing
 
 
 def test_one_hot_bits_per_pixel(example_dict):

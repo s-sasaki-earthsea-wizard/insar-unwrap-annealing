@@ -58,6 +58,25 @@ validate-config: ## Validate $(CONFIG) (no data access)
 doctor: ## Report Python, packages, SA/SQA samplers and SNAPHU
 	$(RUN) insar-unwrap doctor
 
+##@ Data
+.PHONY: datasets
+datasets: ## List approved sample datasets (configs/datasets.yaml)
+	$(RUN) insar-unwrap datasets
+
+.PHONY: fetch-sample
+fetch-sample: ## Download + verify an approved dataset: make fetch-sample DATASET=<name>
+	@test -n "$(DATASET)" || { echo "usage: make fetch-sample DATASET=<name> (see make datasets)"; exit 2; }
+	$(RUN) insar-unwrap fetch-sample $(DATASET)
+
+.PHONY: inspect
+inspect: ## List layers, grids and masks of a GUNW file: make inspect FILE=<path>
+	@test -n "$(FILE)" || { echo "usage: make inspect FILE=<path to .h5>"; exit 2; }
+	$(RUN) insar-unwrap inspect $(FILE)
+
+.PHONY: crop-summary
+crop-summary: ## Read the crop of $(CONFIG) and build its BQM, no solving (SIZE=<n> optional)
+	$(RUN) insar-unwrap crop-summary --config $(CONFIG) $(if $(SIZE),--size $(SIZE))
+
 ##@ Docker
 .PHONY: docker-build
 docker-build: ## Build the image (UID/GID default to the current user)
