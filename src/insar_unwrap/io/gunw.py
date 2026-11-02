@@ -15,7 +15,9 @@ digit 0), and no anomaly bit 8-23 is set. Bits 24-31 are ignored.
 
 Grids are compared by their coordinate arrays: every layer must sit below a
 group whose ``xCoordinates`` / ``yCoordinates`` equal those of the wrapped
-layer. Crops are cut on that native grid; nothing is resampled.
+layer. Crops are cut on that native grid; nothing is resampled. Optional
+complex multilooking (:mod:`insar_unwrap.io.multilook`) averages
+non-overlapping blocks of that window after the pixel validity is decided.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from insar_unwrap.io.multilook import block_centres, multilook
 from insar_unwrap.phase import wrap
 
 IDENTIFICATION = "/science/LSAR/identification"
@@ -50,21 +53,33 @@ class GunwError(Exception):
 
 @dataclass(frozen=True)
 class GunwCrop:
-    """Wrapped phase, coherence and validity on one native-grid window.
+    """Wrapped phase, coherence and validity on one window, optionally multilooked.
+
+    All arrays have the crop shape, i.e. the multilooked shape when
+    ``looks > 1``. The window covers ``rows * looks`` by ``cols * looks``
+    native pixels starting at ``(row0, col0)``.
 
     Attributes:
         wrapped: Wrapped phase in ``(-pi, pi]`` (float64); NaN where the
-            complex value is not finite.
-        coherence: Coherence magnitude (float64).
+            (multilooked) complex value is zero or not finite.
+        coherence: Coherence magnitude (float64); block mean over usable
+            pixels when multilooked.
         valid: Usable pixels (mask rule, finite non-zero interferogram,
-            finite coherence at or above the threshold).
-        mask_code: Raw mask values, or ``None`` if no mask layer was read.
-        row0: First row of the crop on the native grid.
-        col0: First column of the crop on the native grid.
-        x: Easting of the crop columns (pixel centres, as stored).
+            finite coherence at or above the threshold); when multilooked,
+            blocks with enough usable pixels.
+        mask_code: Raw mask values when ``looks == 1``; ``None`` when no mask
+            layer was read or when multilooked (the codes live on the native
+            grid, which must not be mixed with the crop grid).
+        row0: First native row of the window.
+        col0: First native column of the window.
+        x: Easting of the crop columns (pixel or block centres).
         y: Northing of the crop rows.
         epsg: EPSG code of the grid.
-        source: File, granule id, specification version and layer paths.
+        looks: Block size of the multilooking (1: none).
+        consistency: ``|sum z| / sum |z|`` per block over usable pixels (1 on
+            usable pixels when ``looks == 1``); diagnostic only.
+        source: File, granule id, specification version, layer paths and
+            window parameters.
     """
 
     wrapped: np.ndarray
@@ -76,6 +91,8 @@ class GunwCrop:
     x: np.ndarray
     y: np.ndarray
     epsg: int | None
+    looks: int = 1
+    consistency: np.ndarray | None = None
     source: dict[str, object] = field(default_factory=dict)
 
     @property
@@ -226,8 +243,14 @@ def read_crop(
     cols: int,
     coherence_threshold: float = 0.0,
     exclude_water: bool = True,
+    looks: int = 1,
+    min_valid_fraction: float = 0.5,
 ) -> GunwCrop:
     """Read one window of the wrapped interferogram, coherence and mask.
+
+    Pixel validity is decided on the native grid first. With ``looks > 1`` the
+    window of ``rows * looks`` by ``cols * looks`` native pixels is then
+    complex-multilooked (:func:`insar_unwrap.io.multilook.multilook`).
 
     Args:
         path: GUNW HDF5 file.
@@ -236,10 +259,13 @@ def read_crop(
         mask: Path of the mask on the same grid, or ``None`` to skip it.
         row0: First row on the native grid.
         col0: First column on the native grid.
-        rows: Crop height.
-        cols: Crop width.
-        coherence_threshold: Pixels with lower coherence are not usable.
+        rows: Crop height (after multilooking).
+        cols: Crop width (after multilooking).
+        coherence_threshold: Native pixels with lower coherence are not usable.
         exclude_water: Passed to :func:`usable_mask`.
+        looks: Square block size of the multilooking; 1 reads native pixels.
+        min_valid_fraction: Smallest fraction of usable native pixels for a
+            usable block, in ``(0, 1]``. Irrelevant when ``looks == 1``.
 
     Returns:
         The crop with validity flags and grid metadata.
@@ -248,8 +274,13 @@ def read_crop(
         GunwError: Missing layers, wrong dtypes, layers on different grids or
             a window outside the grid.
     """
-    if rows < 1 or cols < 1 or row0 < 0 or col0 < 0:
-        raise GunwError(f"invalid window: row0={row0} col0={col0} rows={rows} cols={cols}")
+    if rows < 1 or cols < 1 or row0 < 0 or col0 < 0 or looks < 1:
+        raise GunwError(
+            f"invalid window: row0={row0} col0={col0} rows={rows} cols={cols} looks={looks}"
+        )
+    if not 0.0 < min_valid_fraction <= 1.0:
+        raise GunwError(f"min_valid_fraction must be in (0, 1], got {min_valid_fraction}")
+    nrows, ncols = rows * looks, cols * looks
     with h5py.File(path, "r") as f:
         w = _require(f, wrapped)
         c = _require(f, coherence)
@@ -274,12 +305,13 @@ def read_crop(
                 raise GunwError(f"{ds.name} is not on the grid of {wrapped}")
         if w.shape != (gy.size, gx.size):
             raise GunwError(f"{wrapped} shape {w.shape} does not match its coordinates")
-        if row0 + rows > w.shape[0] or col0 + cols > w.shape[1]:
+        if row0 + nrows > w.shape[0] or col0 + ncols > w.shape[1]:
             raise GunwError(
-                f"window exceeds grid {w.shape}: rows {row0}+{rows}, cols {col0}+{cols}"
+                f"window exceeds grid {w.shape}: rows {row0}+{nrows}, cols {col0}+{ncols}"
+                f" (looks={looks})"
             )
 
-        win = np.s_[row0 : row0 + rows, col0 : col0 + cols]
+        win = np.s_[row0 : row0 + nrows, col0 : col0 + ncols]
         z = w[win]
         coh = c[win].astype(np.float64)
         code = m[win] if m is not None else None
@@ -295,6 +327,9 @@ def read_crop(
             "grid": grid.name,
             "grid_shape": list(w.shape),
             "spacing": [_lookup(grid, k) for k in ("xCoordinateSpacing", "yCoordinateSpacing")],
+            "looks": looks,
+            "min_valid_fraction": min_valid_fraction if looks > 1 else None,
+            "native_window": [row0, col0, nrows, ncols],
         }
 
     finite = np.isfinite(z) & (z != 0)
@@ -302,17 +337,22 @@ def read_crop(
         valid = finite & np.isfinite(coh) & (coh >= coherence_threshold)
     if code is not None:
         valid &= usable_mask(code, fill, exclude_water=exclude_water)
-    psi = np.full(z.shape, np.nan)
-    psi[finite] = wrap(np.angle(z[finite]))
+    ml = multilook(z, coh, valid, looks, min_valid_fraction=min_valid_fraction)
+    zm = ml.interferogram
+    nonzero = zm != 0
+    psi = np.full(zm.shape, np.nan)
+    psi[nonzero] = wrap(np.angle(zm[nonzero]))
     return GunwCrop(
         wrapped=psi,
-        coherence=coh,
-        valid=valid,
-        mask_code=code,
+        coherence=ml.coherence if looks > 1 else coh,
+        valid=ml.valid,
+        mask_code=code if looks == 1 else None,
         row0=row0,
         col0=col0,
-        x=gx[col0 : col0 + cols].copy(),
-        y=gy[row0 : row0 + rows].copy(),
+        x=block_centres(gx[col0 : col0 + ncols], looks),
+        y=block_centres(gy[row0 : row0 + nrows], looks),
         epsg=epsg,
+        looks=looks,
+        consistency=ml.consistency,
         source=source,
     )

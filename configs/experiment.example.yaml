@@ -34,6 +34,11 @@ input:
     # (2048, 1792) is a fully valid 256x256 window of D00404.
     row0: 2048
     col0: 1792
+  multilook:
+    # Complex block averaging on the native grid before the BQM is built.
+    # A crop of size n covers n * looks native pixels per axis from the origin.
+    looks: 1                 # 1 = none; planned ladder 1, 3, 5
+    min_valid_fraction: 0.5  # usable native pixels needed for a usable block
   mask:
     use_valid_mask: true     # decode fill / subswath / anomaly bits of the mask
     exclude_water: true

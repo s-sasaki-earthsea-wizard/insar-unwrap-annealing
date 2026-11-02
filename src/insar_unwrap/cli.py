@@ -180,6 +180,8 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
             cols=size,
             coherence_threshold=inp.mask.coherence_threshold,
             exclude_water=inp.mask.exclude_water,
+            looks=inp.multilook.looks,
+            min_valid_fraction=inp.multilook.min_valid_fraction,
         )
         qubo = build_unwrap_bqm(
             crop.wrapped,
