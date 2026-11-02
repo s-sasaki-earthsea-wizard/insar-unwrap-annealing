@@ -26,9 +26,10 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
   `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`. Add
   `metrics` (and the GUNW reader in `io`) only when their first real
   implementation lands.
-* The repo lives on a CIFS share: keep the venv off the share
-  (`UV_PROJECT_ENVIRONMENT=$HOME/.cache/insar-unwrap-annealing/venv`) and never
-  call the pyenv `python3` shim (it hangs); use `uv run --locked python`.
+* Never call the pyenv `python3` shim (pyenv has no 3.12 for `.python-version`
+  and the shim hangs); use `uv run --locked python`. The checkout is on local
+  disk with an in-repo `.venv`; `VENV=` / `UV_PROJECT_ENVIRONMENT` are only for
+  checkouts on a network share.
 * Tests cover entry points and boundaries, not exhaustive matrices.
 * Session notes go to `.claude-notes/` (not versioned).
 
@@ -62,8 +63,11 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 ## Scope boundaries (current)
 
 * Local CPU only. No QPU, Braket, Amplify, GPU/CUDA, cloud credentials.
-* No data download, no long computations. Tests solve only tiny problems
-  (<= 4x4); smoke runs beyond that are not benchmarks and are not recorded as
-  results.
+* Data download: only approved sample datasets into `data/` (never versioned).
+  Approved so far: the no-login NISAR-format sample GUNW generated from
+  ALOS-1 PALSAR data (release D00404). It is not a NISAR observation; never
+  describe it as one. Products that need an Earthdata login need approval.
+* No long computations. Tests solve only tiny problems (<= 4x4); smoke runs
+  beyond that are not benchmarks and are not recorded as results.
 * Never fabricate results, timings or figures for unimplemented features.
 * Record implementation status honestly in README and docs.
