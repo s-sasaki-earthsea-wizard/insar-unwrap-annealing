@@ -63,8 +63,11 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 ## Scope boundaries (current)
 
 * Local CPU only. No QPU, Braket, Amplify, GPU/CUDA, cloud credentials.
-* No data download, no long computations. Tests solve only tiny problems
-  (<= 4x4); smoke runs beyond that are not benchmarks and are not recorded as
-  results.
+* Data download: only approved sample datasets into `data/` (never versioned).
+  Approved so far: the no-login NISAR-format sample GUNW generated from
+  ALOS-1 PALSAR data (release D00404). It is not a NISAR observation; never
+  describe it as one. Products that need an Earthdata login need approval.
+* No long computations. Tests solve only tiny problems (<= 4x4); smoke runs
+  beyond that are not benchmarks and are not recorded as results.
 * Never fabricate results, timings or figures for unimplemented features.
 * Record implementation status honestly in README and docs.

@@ -110,7 +110,10 @@ brackets):
   connected component of the valid-pixel graph (masking can split the graph)
   [done: per component, the member nearest the component centroid, value 0 by
   default; or one explicit pixel if the graph is connected; reference bits are
-  fixed and removed from the BQM]
+  fixed and removed from the BQM. Decided 2026-11-02: annealer comparisons
+  will default to no pin (`reference.mode: none`, not implemented yet), with
+  label fields compared modulo one constant per component; the pinned modes
+  stay as options for exact-optimum tests and as a comparison arm]
 * invalid pixels: drop their variables and incident edges, or down-weight
   [done: dropped; zero-weight edges are dropped as well]
 * saturation at k_min / k_max as a diagnostic that the range is too narrow
@@ -133,9 +136,17 @@ as long as the shifted labels stay inside the label range. Consequences:
   latter and is only meant for exact-optimum checks);
 * an energy gap of that size near the optimum is a structural feature of the
   formulation, not necessarily a poor optimizer;
-* alternatives worth discussing: pinning a small patch instead of one pixel,
-  a weak unary term as in Kelany et al. eq. (7), or no pin at all and
-  evaluation modulo a constant.
+* annealers can get stuck in that bulk-shifted state (seen in one untuned SQA
+  smoke run, not a measured rate).
+
+Gauge options considered (2026-11-02):
+
+| Option | Effect | Status |
+|--------|--------|--------|
+| A. single reference pixel per component | optimum unchanged; bulk shift costs only the reference's edges; centroid choice ignores coherence | implemented; kept for exact tests and as a comparison arm |
+| B. pinned patch | shift cost = patch perimeter; needs pre-unwrapped patch labels, wrong if residues inside | not planned |
+| C. unary term `w * sum k^2` (Kelany eq. 7) | no cheap bulk shift; changes the optimum unless `w` is below the unknown gradient-cost gap (about 1/N), and is then too weak at finite temperature | only if D proves problematic |
+| D. no pin, evaluate modulo a constant per component | objective unchanged, full label range usable; degenerate ground state, so equality checks must be modulo a constant | default for annealer comparisons (to implement) |
 
 The one-hot safe penalty (65 for 4 labels on a uniform-weight grid) is large
 compared with typical edge costs (0 to a few). That compresses the energy
@@ -151,6 +162,25 @@ stated plainly in any write-up.
 * SA vs SQA: same BQM, same seeds policy, same budget axes (reads, sweeps).
   Metrics: BQM energy (best, mean, spread), wall time, peak RSS, fraction of
   pixels at label bounds, gauge-aware phase differences between solutions.
+* Comparison protocol (decided 2026-11-02):
+  * primary: energy versus CPU time per problem size, over a log-spaced grid
+    of anneal lengths (sweeps / schedule steps);
+  * time-to-solution only where the target energy is known: residue-free
+    synthetic fields, where the free-gauge optimum is E* = 0;
+  * equal-sweep tables as a secondary view only. One SQA sweep updates every
+    Trotter slice and costs far more than one SA sweep, and the update rules
+    differ (Metropolis sequential vs heat-bath random order);
+  * control arm: the same `PathIntegralAnnealingSampler` code with
+    `Hd_field = 0` and an annealed `Hp_field`. This is classical heat-bath
+    annealing and isolates the transverse-field effect from implementation
+    differences. It is never labelled SQA.
+* Tuning protocol (decided 2026-11-02): SQA starts from a fixed beta and a
+  linearly decreasing Gamma; (beta, Gamma_start, steps) and SA's
+  (beta_range, sweeps) are tuned on synthetic tuning seeds that are disjoint
+  from evaluation seeds, with the same budget for both solvers. The first
+  target is 32x32; 256x256 handling is deliberately left open. Caveat: Gamma
+  acts uniformly on all bits while binary label coefficients differ, so
+  high-order bits see larger local fields.
 * vs SNAPHU: image-level comparison (residual maps, cycle counts, difference
   modulo per-component offsets). Not a ground-truth comparison.
 * Rewrap agreement alone is not evidence of correct unwrapping.
@@ -197,10 +227,16 @@ base classes and plugin registries until there are at least two concrete users.
 3. [done 2026-11-02] `solvers/`: SA and SQA adapters that take a BQM and
    return samples + timing; SQA always on a custom transverse-field schedule.
 4. Inspect one real GUNW granule; replace `UNVERIFIED` paths; implement the
-   reader. Blocked on a locally available granule (needs an Earthdata login
-   and a download, both outside the current scope) and on adding `h5py`.
-5. 32x32 pilot: SA vs SQA energies and times; SNAPHU on the same crop.
-6. Scale up, record metrics, decide whether 256x256 is reachable.
+   reader. First input (approved 2026-11-02): the pre-launch NISAR-format
+   sample GUNW generated from ALOS-1 PALSAR data (composite release D00404, no
+   login needed). It is not a NISAR observation and must be described as
+   such. Real NISAR products that need an Earthdata login come later and need
+   a separate decision.
+5. `reference.mode: none` and `metrics/` (comparison modulo a constant per
+   component, energy statistics, label-bound saturation, per-run peak memory).
+6. 32x32 pilot: SA vs SQA (and the Hd = 0 control arm) energies and times;
+   SNAPHU on the same crop once its installation is decided.
+7. Scale up, record metrics; how to approach 256x256 is decided later.
 
 ## 9. References (verified vs. not)
 
