@@ -89,6 +89,16 @@ difference has to be read with that in mind.
   32 px and 2 per 256 px. Small native crops of such scenes contain at most a
   wrap line or noise-induced wraps; dense fringes need strong deformation
   gradients. Whether to multilook before cropping is an open decision.
+* Measurement scenes (decided 2026-11-03): two NISAR PROVISIONAL GUNW
+  granules of composite release P05023 with denser fringes than LA, found by
+  screening CMR metadata and public browse images (not by reading the HDF5):
+  Greenland, Jakobshavn sector (track 69 frame 53, 12 days, ice flow; roughly
+  1 fringe per 32 px expected at 20 m, ionospheric phase possible) and
+  Kumamoto (track 24 frame 18, 24 days, spanning the 2026-07-28 earthquake;
+  fringes concentrated near the fault, with a decorrelated band along it).
+  Both are in `configs/datasets.yaml`. The fringe figures are browse-image
+  estimates, to be replaced by block statistics from the files. An ALOS-2
+  stack (Kujukuri) is deferred until these two have been tried.
 * Preprocessing (ISCE3 etc.) happens outside this repository.
 
 ## 4. QUBO formulation (implemented in `qubo/`, verified on tiny fields)
