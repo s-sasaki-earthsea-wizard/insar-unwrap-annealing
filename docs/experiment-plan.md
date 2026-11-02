@@ -1,7 +1,7 @@
 # Experiment plan: InSAR phase unwrapping with SA and SQA
 
-Status: design memo. Synthetic generator, BQM construction and SA/SQA adapters
-exist and are unit-tested on tiny fields (<= 4x4 solved, <= 32x32 built). No
+Status: design memo. Synthetic generator, BQM construction, SA/SQA adapters
+and solution metrics exist and are unit-tested on tiny fields (<= 4x4 solved, <= 32x32 built). No
 benchmark, no real-data run and no SNAPHU run has been performed; no
 performance numbers exist.
 
@@ -106,18 +106,19 @@ brackets):
 * sign convention of the wrapped difference and of the 2*pi term
   [done: `phase.py`; edges point right/down; tested against an independent
   oracle written from the radian definition]
-* gauge: a global shift k -> k + c leaves E unchanged; fix one reference per
-  connected component of the valid-pixel graph (masking can split the graph)
-  [done: per component, the member nearest the component centroid, value 0 by
-  default; or one explicit pixel if the graph is connected; reference bits are
-  fixed and removed from the BQM. Decided 2026-11-02: annealer comparisons
-  will default to no pin (`reference.mode: none`, not implemented yet), with
-  label fields compared modulo one constant per component; the pinned modes
-  stay as options for exact-optimum tests and as a comparison arm]
+* gauge: a global shift k -> k + c leaves E unchanged on each connected
+  component of the valid-pixel graph (masking can split the graph)
+  [done: default `none` leaves the gauge free and labels are compared modulo
+  one constant per component (`metrics.agreement_modulo_constant`), decided
+  2026-11-02. Pinned modes kept for exact-optimum tests and as a comparison
+  arm: `per_component` pins the member nearest each component centroid,
+  `pixel` one explicit pixel if the graph is connected; value 0 by default;
+  reference bits are fixed and removed from the BQM]
 * invalid pixels: drop their variables and incident edges, or down-weight
   [done: dropped; zero-weight edges are dropped as well]
 * saturation at k_min / k_max as a diagnostic that the range is too narrow
-  [open: belongs to `metrics/`]
+  [done: `metrics.bound_saturation`; with a free gauge, labels on both
+  bounds are the stronger warning sign]
 * BQM is built sparsely (dimod BQM with explicit edges). No dense N^2 matrix.
   [done: built from coefficient arrays linear in the edge count; 256x256 with
   4 labels: 131,070 variables / 587,759 interactions (binary), built in 0.2 s;
@@ -132,8 +133,9 @@ as long as the shifted labels stay inside the label range. Consequences:
 
 * label agreement with a reference solution must be measured modulo one
   constant per component (e.g. the mode of the label difference), not after
-  aligning on the reference pixel alone (`UnwrapQubo.gauge_fix` does the
-  latter and is only meant for exact-optimum checks);
+  aligning on the reference pixel alone (`metrics.agreement_modulo_constant`
+  does the former; `UnwrapQubo.gauge_fix` does the latter, only for pinned
+  BQMs, and is meant for exact-optimum checks);
 * an energy gap of that size near the optimum is a structural feature of the
   formulation, not necessarily a poor optimizer;
 * annealers can get stuck in that bulk-shifted state (seen in one untuned SQA
@@ -146,7 +148,7 @@ Gauge options considered (2026-11-02):
 | A. single reference pixel per component | optimum unchanged; bulk shift costs only the reference's edges; centroid choice ignores coherence | implemented; kept for exact tests and as a comparison arm |
 | B. pinned patch | shift cost = patch perimeter; needs pre-unwrapped patch labels, wrong if residues inside | not planned |
 | C. unary term `w * sum k^2` (Kelany eq. 7) | no cheap bulk shift; changes the optimum unless `w` is below the unknown gradient-cost gap (about 1/N), and is then too weak at finite temperature | only if D proves problematic |
-| D. no pin, evaluate modulo a constant per component | objective unchanged, full label range usable; degenerate ground state, so equality checks must be modulo a constant | default for annealer comparisons (to implement) |
+| D. no pin, evaluate modulo a constant per component | objective unchanged, full label range usable; degenerate ground state, so equality checks must be modulo a constant | default (`reference_mode="none"`) |
 
 The one-hot safe penalty (65 for 4 labels on a uniform-weight grid) is large
 compared with typical edge costs (0 to a few). That compresses the energy
@@ -206,7 +208,8 @@ src/insar_unwrap/
   io/          synthetic.py exists; GUNW reader + grid checks planned
   qubo/        encoding.py, build.py: BQM, encodings, gauge handling (exist)
   solvers/     annealing.py: SA and SQA adapters (exist); SNAPHU subprocess planned
-  metrics/     energy, saturation, gauge-aware differences, timing/memory (planned)
+  metrics/     labels.py (agreement modulo a constant, saturation), energy.py
+               (energy statistics, TTS) exist; per-run memory planned
 ```
 
 The SA/SQA adapters record wall and CPU time of the `sample()` call only.
@@ -230,10 +233,15 @@ base classes and plugin registries until there are at least two concrete users.
    reader. First input (approved 2026-11-02): the pre-launch NISAR-format
    sample GUNW generated from ALOS-1 PALSAR data (composite release D00404, no
    login needed). It is not a NISAR observation and must be described as
-   such. Real NISAR products that need an Earthdata login come later and need
-   a separate decision.
-5. `reference.mode: none` and `metrics/` (comparison modulo a constant per
-   component, energy statistics, label-bound saturation, per-run peak memory).
+   such. A quick look showed almost no fringes (the product's unwrapped phase
+   spans less than one cycle over the whole frame), so this granule is used
+   only to build and check the reader, masks and weights (decided
+   2026-11-02). Real-data measurements will use a fringe-bearing product
+   chosen after a new search; products that need an Earthdata login need a
+   separate decision.
+5. [done 2026-11-02, except per-run peak memory] `reference.mode: none` and
+   `metrics/` (comparison modulo a constant per component, energy statistics,
+   time-to-solution, label-bound saturation).
 6. 32x32 pilot: SA vs SQA (and the Hd = 0 control arm) energies and times;
    SNAPHU on the same crop once its installation is decided.
 7. Scale up, record metrics; how to approach 256x256 is decided later.

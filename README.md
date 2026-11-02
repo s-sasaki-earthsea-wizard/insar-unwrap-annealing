@@ -21,10 +21,11 @@ plan and the scientific caveats that shape it.
 | `insar-unwrap validate-config` (schema + numeric consistency, no file access) | implemented |
 | `insar-unwrap doctor` (versions, SA/SQA import check, SNAPHU presence) | implemented |
 | Synthetic fields with exact integer truth (`insar_unwrap.io.synthetic`) | implemented (API) |
-| QUBO/BQM: L2 objective, binary / one-hot encoding, masks, per-component gauge (`insar_unwrap.qubo`) | implemented (API), verified against brute force on <= 3x3 fields |
+| QUBO/BQM: L2 objective, binary / one-hot encoding, masks, free gauge (default) or pinned reference (`insar_unwrap.qubo`) | implemented (API), verified against brute force on <= 3x3 fields |
 | SA / SQA adapters with wall/CPU timing (`insar_unwrap.solvers`) | implemented (API), smoke-tested on 4x4 |
 | GUNW reader (HDF5 layers, grid consistency checks) | not implemented (needs a real granule) |
-| Experiment runner / CLI, metrics, result records, peak-memory measurement | not implemented |
+| Metrics: label agreement modulo a constant per component, label-bound saturation, energy statistics, time-to-solution (`insar_unwrap.metrics`) | implemented (API), unit-tested |
+| Experiment runner / CLI, result records, peak-memory measurement | not implemented |
 | SNAPHU runner | not implemented |
 | D-Wave QPU, Braket, Fixstars Amplify, GPU | out of scope for now |
 
@@ -48,15 +49,18 @@ and the non-custom SQA schedules. Details and evidence:
 ```python
 from insar_unwrap.config import SaSolver, SqaSolver
 from insar_unwrap.io.synthetic import ramp, synthesize
+from insar_unwrap.metrics import agreement_modulo_constant, energy_stats
 from insar_unwrap.qubo import build_unwrap_bqm
 from insar_unwrap.solvers import run_sa, run_sqa
 
 field = synthesize(ramp((32, 32), 1.5, 1.0), noise_std=0.3, seed=0)
-qubo = build_unwrap_bqm(field.wrapped, label_min=-2, label_max=1)
+qubo = build_unwrap_bqm(field.wrapped, label_min=-2, label_max=1)  # free gauge
 sa = run_sa(qubo.bqm, SaSolver(num_reads=10, num_sweeps=1000), seed=1)
 sqa = run_sqa(qubo.bqm, SqaSolver(num_reads=10), seed=1)  # untuned default schedule
 k, ok = qubo.decode(sa.sampleset.first.sample)
-truth = qubo.gauge_fix(field.k_true)  # compare labels in the BQM's gauge
+# Labels are defined up to one constant per connected component.
+agree = agreement_modulo_constant(k[0], field.k_true, qubo.component, ok[0])
+stats = energy_stats(sa.sampleset)
 ```
 
 ## Requirements
@@ -147,7 +151,7 @@ encoding and reference are currently passed to `build_unwrap_bqm` directly.
 ## Roadmap
 
 1. Verify phase/sign/gauge conventions and the QUBO mapping on small synthetic
-   data. (Done for tiny fields; gauge-aware metrics still to come.)
+   data. (Done for tiny fields, including gauge-aware metrics.)
 2. Inspect a real GUNW product; load wrapped phase, coherence and mask on one grid.
 3. Run SA vs SQA on the same QUBO at 32x32; compare images against SNAPHU.
 4. Scale to 64, 128, 256; measure quality, time and memory.
