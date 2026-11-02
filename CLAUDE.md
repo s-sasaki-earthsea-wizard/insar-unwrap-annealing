@@ -23,9 +23,10 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 * Identifiers, comments, docstrings, commit messages: English. Google-style docstrings.
 * PEP 8 via ruff (line length 100). `snake_case` functions, `PascalCase` classes.
 * src layout: `src/insar_unwrap/`. Keep modules small. Existing: `phase.py`,
-  `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`. Add
-  `metrics` (and the GUNW reader in `io`) only when their first real
-  implementation lands.
+  `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`,
+  `metrics/{labels,energy}.py`. Add the GUNW reader in `io` (and per-run
+  memory measurement in `metrics`) only when their first real implementation
+  lands.
 * Never call the pyenv `python3` shim (pyenv has no 3.12 for `.python-version`
   and the shim hangs); use `uv run --locked python`. The checkout is on local
   disk with an in-repo `.venv`; `VENV=` / `UV_PROJECT_ENVIRONMENT` are only for
@@ -55,8 +56,11 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
   reintroduce `Gamma` or non-custom SQA schedules in the config.
 * Objective is `sum w * (k_t - k_s - a)^2` with
   `a = (W(dpsi) - dpsi) / 2pi`; not `(W(dpsi) + 2pi dk)^2` (that never unwraps).
-* Compare label fields modulo one constant per component; a single reference
-  pixel is a weak gauge pin (bulk shift costs only the reference's edge weights).
+* Compare label fields modulo one constant per component
+  (`metrics.agreement_modulo_constant`). The default gauge is free
+  (`reference_mode="none"`); pinned modes are for exact tests and as a
+  comparison arm. A single reference pixel is a weak gauge pin (bulk shift
+  costs only the reference's edge weights).
 * No claims of quantum advantage or speed-up over SNAPHU.
 * Separate synthetic-data implementation checks from real-data evaluation.
 

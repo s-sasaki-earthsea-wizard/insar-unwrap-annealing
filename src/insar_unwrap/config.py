@@ -110,14 +110,16 @@ class InputSection(_Strict):
 
 
 class ReferenceSection(_Strict):
-    """Gauge fixing: which pixel(s) pin the integer label.
+    """Gauge handling: whether and where the integer label is pinned.
 
-    ``per_component`` means one reference per connected component of the valid
-    mask; ``pixel`` means a single explicit pixel (only meaningful if the valid
-    graph is connected).
+    ``none`` (default) leaves the gauge free; label fields are then compared
+    modulo one constant per connected component. ``per_component`` pins one
+    reference per connected component of the valid mask; ``pixel`` pins a
+    single explicit pixel (only meaningful if the valid graph is connected).
+    The pinned modes are kept for exact-optimum tests and as a comparison arm.
     """
 
-    mode: Literal["pixel", "per_component"] = "per_component"
+    mode: Literal["none", "pixel", "per_component"] = "none"
     pixel: tuple[Annotated[int, Field(ge=0)], Annotated[int, Field(ge=0)]] | None = None
 
     @model_validator(mode="after")

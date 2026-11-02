@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from insar_unwrap.io.synthetic import ramp, synthesize
+from insar_unwrap.metrics import agreement_modulo_constant
 from insar_unwrap.phase import TWO_PI, wrap
 from insar_unwrap.qubo import LabelEncoding, build_unwrap_bqm
 
@@ -79,6 +80,7 @@ def test_bqm_energy_equals_independent_objective(encoding):
         valid=valid,
         weight_h=w_h,
         weight_v=w_v,
+        reference_mode="per_component",
         reference_value=1,
     )
     for _ in range(20):
@@ -92,7 +94,9 @@ def test_bqm_energy_equals_independent_objective(encoding):
 def test_exact_ground_state_recovers_noise_free_truth():
     field = synthesize(ramp((3, 3), 1.2, -0.9))
     assert field.num_residues == 0
-    qubo = build_unwrap_bqm(field.wrapped, label_min=-1, label_max=2)
+    qubo = build_unwrap_bqm(
+        field.wrapped, label_min=-1, label_max=2, reference_mode="per_component"
+    )
     assert qubo.references.tolist() == [4]  # centre pixel of a 3x3 grid
     best = dimod.ExactSolver().sample(qubo.bqm).first
     assert best.energy == pytest.approx(0.0)
@@ -104,7 +108,8 @@ def test_exact_ground_state_recovers_noise_free_truth():
 def test_exact_ground_energy_equals_brute_force_over_integer_labels():
     rng = np.random.default_rng(11)
     psi = wrap(rng.uniform(-np.pi, np.pi, (3, 3)))
-    qubo = build_unwrap_bqm(psi, label_min=-1, label_max=1)  # 3 labels: non-power-of-two
+    # 3 labels: non-power-of-two
+    qubo = build_unwrap_bqm(psi, label_min=-1, label_max=1, reference_mode="per_component")
     free = [p for p in range(9) if p != qubo.references[0]]
     best = np.inf
     for combo in itertools.product(range(-1, 2), repeat=len(free)):
@@ -134,8 +139,11 @@ def test_mask_splits_graph_into_components_with_one_reference_each():
     psi = wrap(ramp((4, 5), 0.5, 0.5))
     valid = np.ones((4, 5), dtype=bool)
     valid[:, 2] = False
-    qubo = build_unwrap_bqm(psi, label_min=-1, label_max=2, valid=valid)
+    qubo = build_unwrap_bqm(
+        psi, label_min=-1, label_max=2, valid=valid, reference_mode="per_component"
+    )
     assert qubo.num_components == 2
+    assert qubo.references.size == 2
     assert set(np.unique(qubo.component[valid])) == {0, 1}
     assert (qubo.component[~valid] == -1).all()
     for r in range(4):
@@ -163,11 +171,41 @@ def test_pixel_reference_mode_pins_requested_pixel():
     assert np.array_equal(k[0], qubo.gauge_fix(field.k_true))
 
 
+def test_free_gauge_recovers_noise_free_truth_modulo_a_constant():
+    field = synthesize(ramp((3, 3), 1.2, -0.9))
+    assert field.num_residues == 0
+    qubo = build_unwrap_bqm(field.wrapped, label_min=-1, label_max=2)
+    assert qubo.reference_mode == "none" and qubo.references.size == 0
+    assert qubo.bqm.num_variables == 9 * qubo.encoding.bits_per_pixel
+    best = dimod.ExactSolver().sample(qubo.bqm).first
+    assert best.energy == pytest.approx(0.0)
+    k, ok = qubo.decode(best.sample)
+    agreement = agreement_modulo_constant(k[0], field.k_true, qubo.component, ok[0])
+    assert agreement.fraction == 1.0
+    with pytest.raises(ValueError, match="pinned reference"):
+        qubo.gauge_fix(field.k_true)
+
+
+def test_free_gauge_ground_energy_equals_brute_force_and_bounds_pinned():
+    rng = np.random.default_rng(7)
+    psi = wrap(rng.uniform(-np.pi, np.pi, (2, 3)))  # residues present
+    free = build_unwrap_bqm(psi, label_min=-2, label_max=1)
+    pinned = build_unwrap_bqm(psi, label_min=-2, label_max=1, reference_mode="per_component")
+    brute = min(
+        naive_energy(np.array(combo).reshape(2, 3), psi)
+        for combo in itertools.product(range(-2, 2), repeat=6)
+    )
+    e_free = dimod.ExactSolver().sample(free.bqm).first.energy
+    e_pinned = dimod.ExactSolver().sample(pinned.bqm).first.energy
+    assert e_free == pytest.approx(brute)
+    assert e_free <= e_pinned + 1e-12
+
+
 def test_bqm_stays_sparse_on_a_32x32_grid():
     field = synthesize(ramp((32, 32), 1.0, 1.5), noise_std=0.2, seed=0)
     qubo = build_unwrap_bqm(field.wrapped, label_min=-2, label_max=1)
     npix, nedges, nbits = 32 * 32, 2 * 32 * 31, 2
-    assert qubo.bqm.num_variables == (npix - 1) * nbits
+    assert qubo.bqm.num_variables == npix * nbits  # free gauge: no fixed bits
     assert qubo.bqm.num_interactions <= npix * 1 + nedges * nbits**2
     assert qubo.summary()["edges"] == nedges
 
@@ -176,7 +214,9 @@ def test_bqm_stays_sparse_on_a_32x32_grid():
     ("kwargs", "fragment"),
     [
         ({"wrapped": np.full((3, 3), 4.0)}, "pass the wrapped"),
-        ({"reference_value": 5}, "reference_value"),
+        ({"reference_mode": "per_component", "reference_value": 5}, "outside"),
+        ({"reference_value": 0}, "pinned reference_mode"),
+        ({"reference_mode": "bogus"}, "unknown reference_mode"),
         ({"reference_mode": "pixel"}, "reference_pixel is required"),
         ({"reference_pixel": (0, 0)}, "only allowed"),
         ({"one_hot_penalty": 10.0}, "only meaningful"),

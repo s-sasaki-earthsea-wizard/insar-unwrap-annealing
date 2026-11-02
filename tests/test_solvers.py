@@ -5,6 +5,7 @@ from dwave.samplers import PathIntegralAnnealingSampler
 
 from insar_unwrap.config import SaSolver, SqaSchedule, SqaSolver
 from insar_unwrap.io.synthetic import ramp, synthesize
+from insar_unwrap.metrics import agreement_modulo_constant
 from insar_unwrap.qubo import build_unwrap_bqm
 from insar_unwrap.solvers import run_sa, run_sqa, sqa_schedule
 
@@ -28,7 +29,8 @@ def test_runner_solves_tiny_noise_free_field(tiny, runner, cfg):
     assert run.best_energy == pytest.approx(0.0)
     assert np.allclose(run.energies, qubo.bqm.energies(run.sampleset))
     k, ok = qubo.decode(run.sampleset.first.sample)
-    assert ok.all() and np.array_equal(k[0], qubo.gauge_fix(field.k_true))
+    assert ok.all()
+    assert agreement_modulo_constant(k[0], field.k_true, qubo.component).fraction == 1.0
     assert run.wall_time_s > 0 and run.cpu_time_s >= 0
     assert len(run.sampleset) == cfg.num_reads
 

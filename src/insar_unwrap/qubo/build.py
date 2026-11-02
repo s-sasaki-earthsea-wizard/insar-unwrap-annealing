@@ -8,19 +8,24 @@ with ``a_st`` from :func:`insar_unwrap.phase.integer_targets`. Multiplying by
 ``(2*pi)**2`` gives the weighted squared residual between the unwrapped
 gradient ``(psi_t + 2*pi*k_t) - (psi_s + 2*pi*k_s)`` and the wrapped gradient
 ``W(psi_t - psi_s)``. This is the L2 cost of Kelany et al. (2020), eq. (7),
-without their unary regularizer; the gauge is fixed by reference pixels
-instead.
+without their unary regularizer.
 
 Design choices made explicit here:
 
 * Invalid pixels carry no variables; edges touching them, and edges with zero
   weight, are dropped.
 * Connected components are taken on the remaining edge graph. Each component
-  has its own gauge freedom ``k -> k + c`` and therefore its own reference.
-* ``per_component`` places each reference at the member pixel nearest to the
-  component centroid (ties: lowest row-major index), so a symmetric label range
-  covers smooth fields with the fewest labels. ``pixel`` uses one explicit
-  pixel and requires a single component.
+  has its own gauge freedom ``k -> k + c``.
+* ``none`` (default) leaves the gauge free: every valid pixel keeps all its
+  bits, the ground state is degenerate under per-component shifts that stay
+  inside the label range, and label fields must be compared modulo one
+  constant per component (:mod:`insar_unwrap.metrics`). This avoids the cheap
+  bulk-shift trap of a single pinned pixel.
+* ``per_component`` pins the member pixel nearest to each component centroid
+  (ties: lowest row-major index), so a symmetric label range covers smooth
+  fields with the fewest labels. ``pixel`` pins one explicit pixel and
+  requires a single component. Both are kept for exact-optimum tests and as a
+  comparison arm.
 * Reference bits are fixed (removed from the BQM), not penalized.
 * Variable labels are ``flat_pixel_index * bits_per_pixel + bit``.
 * The BQM is assembled from coefficient arrays whose size is linear in the
@@ -39,7 +44,8 @@ import numpy as np
 from insar_unwrap.phase import integer_targets
 from insar_unwrap.qubo.encoding import EncodingKind, LabelEncoding
 
-ReferenceMode = Literal["per_component", "pixel"]
+ReferenceMode = Literal["none", "per_component", "pixel"]
+_REFERENCE_MODES = ("none", "per_component", "pixel")
 
 _RANGE_TOL = 1e-9
 
@@ -84,15 +90,17 @@ class UnwrapQubo:
     """A phase-unwrapping BQM together with everything needed to interpret it.
 
     Attributes:
-        bqm: Binary quadratic model (BINARY vartype). Reference bits are fixed
-            and absent from it.
+        bqm: Binary quadratic model (BINARY vartype). Reference bits, if any,
+            are fixed and absent from it.
         encoding: Label encoding used for every pixel.
         shape: Image shape ``(rows, cols)``.
         valid: Boolean mask of pixels that carry labels.
         component: Component id per pixel (``-1`` for invalid pixels).
-        references: Flat indices of the reference pixel of each component,
-            ordered by component id.
-        reference_value: Label assigned to every reference pixel.
+        reference_mode: ``"none"``, ``"per_component"`` or ``"pixel"``.
+        references: Flat indices of the pinned pixel of each component, ordered
+            by component id; empty when ``reference_mode == "none"``.
+        reference_value: Label assigned to every reference pixel; ``None``
+            when the gauge is free.
         edges: Edges entering the objective.
         one_hot_penalty: Penalty weight for one-hot constraints (``None`` for
             binary encoding).
@@ -103,16 +111,17 @@ class UnwrapQubo:
     shape: tuple[int, int]
     valid: np.ndarray
     component: np.ndarray
+    reference_mode: ReferenceMode
     references: np.ndarray
-    reference_value: int
+    reference_value: int | None
     edges: EdgeList
     one_hot_penalty: float | None = None
     _fixed_bits: dict[int, int] = field(default_factory=dict, repr=False)
 
     @property
     def num_components(self) -> int:
-        """Number of connected components (one reference each)."""
-        return int(self.references.size)
+        """Number of connected components of the valid-pixel graph."""
+        return int(self.component.max()) + 1
 
     def variable_label(self, row: int, col: int, bit: int) -> int:
         """BQM label of one bit of one pixel."""
@@ -128,6 +137,7 @@ class UnwrapQubo:
             "encoding": self.encoding.kind,
             "label_range": [self.encoding.label_min, self.encoding.label_max],
             "bits_per_pixel": self.encoding.bits_per_pixel,
+            "reference_mode": self.reference_mode,
             "reference_value": self.reference_value,
             "num_variables": int(self.bqm.num_variables),
             "num_interactions": int(self.bqm.num_interactions),
@@ -142,15 +152,24 @@ class UnwrapQubo:
         """Shift a label field per component so that references equal ``reference_value``.
 
         Use this to bring an external label field (synthetic truth, another
-        solver's output) into the gauge of this BQM before comparing labels.
-        Invalid pixels are set to 0.
+        solver's output) into the gauge of a pinned BQM for exact-optimum
+        checks. Invalid pixels are set to 0. For general comparisons use
+        :func:`insar_unwrap.metrics.agreement_modulo_constant`.
 
         Args:
             k: Integer label field with the image shape.
 
         Returns:
             int64 array with the image shape.
+
+        Raises:
+            ValueError: If the gauge is free (``reference_mode == "none"``).
         """
+        if self.reference_mode == "none":
+            raise ValueError(
+                "gauge_fix needs a pinned reference; with reference_mode 'none' compare "
+                "labels with metrics.agreement_modulo_constant"
+            )
         k = np.asarray(k).reshape(-1).astype(np.int64)
         comp = self.component.reshape(-1)
         out = np.zeros_like(k)
@@ -295,9 +314,9 @@ def build_unwrap_bqm(
     valid: np.ndarray | None = None,
     weight_h: np.ndarray | None = None,
     weight_v: np.ndarray | None = None,
-    reference_mode: ReferenceMode = "per_component",
+    reference_mode: ReferenceMode = "none",
     reference_pixel: tuple[int, int] | None = None,
-    reference_value: int = 0,
+    reference_value: int | None = None,
     one_hot_penalty: float | None = None,
 ) -> UnwrapQubo:
     """Build the phase-unwrapping BQM for one wrapped image.
@@ -311,9 +330,11 @@ def build_unwrap_bqm(
         valid: Boolean mask of usable pixels; all pixels by default.
         weight_h: Weights of horizontal edges, shape ``(rows, cols-1)``; 1 by default.
         weight_v: Weights of vertical edges, shape ``(rows-1, cols)``; 1 by default.
-        reference_mode: ``"per_component"`` or ``"pixel"``.
+        reference_mode: ``"none"`` (free gauge), ``"per_component"`` or
+            ``"pixel"``.
         reference_pixel: ``(row, col)``; required iff ``reference_mode == "pixel"``.
-        reference_value: Label pinned at every reference pixel.
+        reference_value: Label pinned at every reference pixel; 0 when
+            omitted. Only allowed with a pinned ``reference_mode``.
         one_hot_penalty: Penalty weight for one-hot encoding. ``None`` selects
             :func:`safe_one_hot_penalty`. Must be ``None`` for binary encoding.
 
@@ -345,10 +366,19 @@ def build_unwrap_bqm(
         raise ValueError(
             "wrapped phase must lie in (-pi, pi]; pass the wrapped, not unwrapped, phase"
         )
-    if not enc.label_min <= reference_value <= enc.label_max:
-        raise ValueError(
-            f"reference_value {reference_value} outside [{enc.label_min}, {enc.label_max}]"
-        )
+    if reference_mode not in _REFERENCE_MODES:
+        raise ValueError(f"unknown reference_mode {reference_mode!r}")
+    if reference_pixel is not None and reference_mode != "pixel":
+        raise ValueError("reference_pixel is only allowed when reference_mode == 'pixel'")
+    if reference_mode == "none":
+        if reference_value is not None:
+            raise ValueError("reference_value is only allowed with a pinned reference_mode")
+    else:
+        reference_value = 0 if reference_value is None else int(reference_value)
+        if not enc.label_min <= reference_value <= enc.label_max:
+            raise ValueError(
+                f"reference_value {reference_value} outside [{enc.label_min}, {enc.label_max}]"
+            )
     if enc.kind == "binary" and one_hot_penalty is not None:
         raise ValueError("one_hot_penalty is only meaningful with one_hot encoding")
     if one_hot_penalty is not None and not one_hot_penalty > 0:
@@ -361,11 +391,11 @@ def build_unwrap_bqm(
 
     valid_flat = valid.ravel()
     comp, ncomp = _components(npix, valid_flat, edges)
-    if reference_mode == "per_component":
-        if reference_pixel is not None:
-            raise ValueError("reference_pixel is only allowed when reference_mode == 'pixel'")
+    if reference_mode == "none":
+        references = np.zeros(0, dtype=np.int64)
+    elif reference_mode == "per_component":
         references = _centroid_references(comp, ncomp, cols)
-    elif reference_mode == "pixel":
+    else:
         if reference_pixel is None:
             raise ValueError("reference_pixel is required when reference_mode == 'pixel'")
         r0, c0 = reference_pixel
@@ -377,8 +407,6 @@ def build_unwrap_bqm(
                 "components; use 'per_component'"
             )
         references = np.array([r0 * cols + c0], dtype=np.int64)
-    else:
-        raise ValueError(f"unknown reference_mode {reference_mode!r}")
 
     nbits = enc.bits_per_pixel
     pix = np.flatnonzero(valid_flat)
@@ -449,9 +477,11 @@ def build_unwrap_bqm(
         linear, quadratic, offset, dimod.BINARY, variable_order=labels.tolist()
     )
 
-    ref_bits = enc.bits_for(reference_value)
-    fixed = {int(p) * nbits + b: int(ref_bits[b]) for p in references for b in range(nbits)}
-    bqm.fix_variables(fixed)
+    fixed: dict[int, int] = {}
+    if reference_value is not None:
+        ref_bits = enc.bits_for(reference_value)
+        fixed = {int(p) * nbits + b: int(ref_bits[b]) for p in references for b in range(nbits)}
+        bqm.fix_variables(fixed)
 
     return UnwrapQubo(
         bqm=bqm,
@@ -459,8 +489,9 @@ def build_unwrap_bqm(
         shape=shape,
         valid=valid,
         component=comp.reshape(shape),
+        reference_mode=reference_mode,
         references=references.astype(np.int64),
-        reference_value=int(reference_value),
+        reference_value=reference_value,
         edges=edges,
         one_hot_penalty=penalty,
         _fixed_bits=fixed,
