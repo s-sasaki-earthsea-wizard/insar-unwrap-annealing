@@ -63,13 +63,22 @@ solvers:
     # This is a classical path-integral Monte Carlo simulation of a transverse-field
     # Ising model. It is not a state-vector simulation and does not reproduce QPU
     # real-time dynamics.
+    #
+    # Always run with beta_schedule_type="custom". The sampler's linear/geometric
+    # schedules use a zero transverse field (its Gamma argument is overwritten),
+    # which is classical annealing; they are therefore not offered here.
     enabled: true
     num_reads: 20
-    num_sweeps: 1000
-    beta_schedule_type: geometric
-    Gamma: 1.0              # transverse field strength
-    # Hp_field / Hd_field: explicit longitudinal/transverse schedules (same length,
-    # non-negative). Omit to use the sampler default built from Gamma and beta_range.
+    num_sweeps_per_beta: 1
+    schedule:
+      # Fixed inverse temperature; transverse field Gamma decreases linearly.
+      # Units: BQM energy. UNTUNED starting values, to be calibrated on synthetic data.
+      beta: 10.0
+      gamma_start: 3.0
+      gamma_end: 0.0
+      num_steps: 1000       # sweeps per read = num_steps * num_sweeps_per_beta
+    # Alternative: explicit Hp_field / Hd_field lists (same length, non-negative,
+    # Hd_field > 0 somewhere). Remove `schedule` when using them.
   snaphu:
     # External reference unwrapper. Different objective; compared as an image
     # processing result, not as a QUBO solver.

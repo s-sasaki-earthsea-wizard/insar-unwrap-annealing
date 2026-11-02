@@ -10,9 +10,17 @@ classes they target (verified against dwave-samplers 1.8.0):
 
 * ``SimulatedAnnealingSampler.sample``: ``num_reads``, ``num_sweeps``,
   ``beta_range``, ``beta_schedule_type``, ``seed``.
-* ``PathIntegralAnnealingSampler.sample``: ``num_reads``, ``num_sweeps``,
-  ``beta_range``, ``beta_schedule_type``, ``Gamma``, ``Hp_field``,
+* ``PathIntegralAnnealingSampler.sample``: ``num_reads``,
+  ``num_sweeps_per_beta``, ``beta_schedule_type="custom"``, ``Hp_field``,
   ``Hd_field``, ``seed``.
+
+The SQA section deliberately does not expose ``Gamma`` or the linear/geometric
+schedules: in dwave-samplers 1.8.0 those schedules set the transverse field to
+zero at every step (``Gamma`` is overwritten), which is classical annealing.
+See ``insar_unwrap.solvers.annealing``.
+
+Both samplers reject seeds outside ``[0, 2**31 - 1]`` although their error
+message says ``2^32 - 1``; the schema uses the bound the code enforces.
 
 Only the subset we intend to use is modelled here. Unknown keys are rejected so
 that typos do not silently fall back to sampler defaults.
@@ -28,7 +36,12 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 PositiveInt = Annotated[int, Field(ge=1)]
+PositiveFloat = Annotated[float, Field(gt=0.0)]
+NonNegativeFloat = Annotated[float, Field(ge=0.0)]
 UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
+
+SEED_MAX = 2**31 - 1
+"""Largest seed accepted by dwave-samplers 1.8.0 (checked: ``0 <= seed < 2**31``)."""
 
 
 class _Strict(BaseModel):
@@ -41,7 +54,7 @@ class ExperimentSection(_Strict):
     """Top-level experiment identity and reproducibility settings."""
 
     name: str = Field(min_length=1)
-    seed: Annotated[int, Field(ge=0)] = 0
+    seed: Annotated[int, Field(ge=0, le=SEED_MAX)] = 0
     output_dir: Path = Path("results")
 
 
@@ -175,32 +188,68 @@ class SaSolver(_Strict):
         return self
 
 
+class SqaSchedule(_Strict):
+    """Fixed-temperature transverse-field schedule.
+
+    Step ``i`` uses ``Hp_field[i] = beta`` and ``Hd_field[i] = beta * Gamma_i``
+    with ``Gamma_i`` linear from ``gamma_start`` to ``gamma_end``. ``beta`` and
+    ``Gamma`` are in units of the BQM energy (the sampler converts the BQM to
+    Ising form; energies are unchanged by that conversion). The defaults are
+    untuned starting values, not calibrated settings.
+    """
+
+    beta: PositiveFloat = 10.0
+    gamma_start: PositiveFloat = 3.0
+    gamma_end: NonNegativeFloat = 0.0
+    num_steps: PositiveInt = 1000
+
+    @model_validator(mode="after")
+    def _decreasing(self) -> SqaSchedule:
+        if self.gamma_end >= self.gamma_start:
+            raise ValueError("solvers.sqa.schedule.gamma_end must be < gamma_start")
+        return self
+
+
 class SqaSolver(_Strict):
     """Simulated quantum annealing (dwave.samplers.PathIntegralAnnealingSampler).
 
-    ``Hp_field``/``Hd_field`` are optional explicit longitudinal/transverse field
-    schedules (scaled by inverse temperature, non-negative). If omitted, the
-    sampler builds a default schedule from ``Gamma``, ``beta_range`` and
-    ``num_sweeps``.
+    Always run with ``beta_schedule_type="custom"``. Either ``schedule``
+    (generated) or explicit ``Hp_field``/``Hd_field`` lists (same length,
+    non-negative, scaled by inverse temperature) define the anneal. Explicit
+    fields require that ``schedule`` is not given, and ``Hd_field`` must be
+    positive somewhere; an all-zero transverse field is classical annealing.
+    Total sweeps per read are ``len(schedule) * num_sweeps_per_beta``.
     """
 
     enabled: bool = True
     num_reads: PositiveInt = 10
-    num_sweeps: PositiveInt = 1000
-    beta_range: tuple[float, float] | None = None
-    beta_schedule_type: Literal["linear", "geometric"] = "geometric"
-    Gamma: Annotated[float, Field(gt=0.0)] = 1.0
-    Hp_field: list[Annotated[float, Field(ge=0.0)]] | None = None
-    Hd_field: list[Annotated[float, Field(ge=0.0)]] | None = None
+    num_sweeps_per_beta: PositiveInt = 1
+    schedule: SqaSchedule = SqaSchedule()
+    Hp_field: list[NonNegativeFloat] | None = None
+    Hd_field: list[NonNegativeFloat] | None = None
 
     @model_validator(mode="after")
     def _check_fields(self) -> SqaSolver:
-        _check_beta_range(self.beta_range, "solvers.sqa.beta_range")
         if (self.Hp_field is None) != (self.Hd_field is None):
             raise ValueError("solvers.sqa.Hp_field and Hd_field must be given together")
-        if self.Hp_field is not None and len(self.Hp_field) != len(self.Hd_field or []):
-            raise ValueError("solvers.sqa.Hp_field and Hd_field must have the same length")
+        if self.Hp_field is not None and self.Hd_field is not None:
+            if "schedule" in self.model_fields_set:
+                raise ValueError("give either solvers.sqa.schedule or Hp_field/Hd_field, not both")
+            if len(self.Hp_field) != len(self.Hd_field):
+                raise ValueError("solvers.sqa.Hp_field and Hd_field must have the same length")
+            if not self.Hp_field:
+                raise ValueError("solvers.sqa.Hp_field must not be empty")
+            if max(self.Hd_field) <= 0:
+                raise ValueError(
+                    "solvers.sqa.Hd_field is zero everywhere; that is classical annealing, not SQA"
+                )
         return self
+
+    @property
+    def total_sweeps(self) -> int:
+        """Sweeps per read implied by the schedule."""
+        steps = len(self.Hp_field) if self.Hp_field is not None else self.schedule.num_steps
+        return steps * self.num_sweeps_per_beta
 
 
 class SnaphuSolver(_Strict):
