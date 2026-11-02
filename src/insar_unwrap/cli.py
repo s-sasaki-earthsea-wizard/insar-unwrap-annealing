@@ -33,8 +33,9 @@ from insar_unwrap.io.datasets import (
     load_registry,
 )
 from insar_unwrap.io.gunw import GunwError, describe, read_crop
+from insar_unwrap.metrics.descriptors import mean_fringe_rate, tree_label_span
 from insar_unwrap.phase import residues
-from insar_unwrap.qubo import build_unwrap_bqm
+from insar_unwrap.qubo import build_unwrap_bqm, edge_weights
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,6 +181,14 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
             cols=size,
             coherence_threshold=inp.mask.coherence_threshold,
             exclude_water=inp.mask.exclude_water,
+            looks=inp.multilook.looks,
+            min_valid_fraction=inp.multilook.min_valid_fraction,
+        )
+        weights = edge_weights(
+            prob.edge_weighting,
+            crop.valid,
+            crop.coherence,
+            normalization=prob.weight_normalization,
         )
         qubo = build_unwrap_bqm(
             crop.wrapped,
@@ -187,6 +196,8 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
             label_max=prob.label_max,
             encoding=prob.encoding,
             valid=crop.valid,
+            weight_h=weights.horizontal,
+            weight_v=weights.vertical,
             reference_mode=prob.reference.mode,
             reference_pixel=prob.reference.pixel,
         )
@@ -197,25 +208,39 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
     valid = crop.valid
     loops = valid[:-1, :-1] & valid[1:, :-1] & valid[:-1, 1:] & valid[1:, 1:]
     res = residues(np.where(valid, crop.wrapped, 0.0))
-    notes = []
-    if prob.edge_weighting == "coherence":
-        notes.append("edge_weighting 'coherence' is not implemented yet; BQM uses uniform weights")
+    rate = mean_fringe_rate(crop.wrapped, valid)
+    e = qubo.edges
+    span = tree_label_span(valid.size, e.src, e.dst, e.target, valid)
+    warnings = []
+    if span + 1 > prob.num_labels:
+        warnings.append(
+            f"tree-integrated label span {span} needs {span + 1} labels; the configured range "
+            f"has {prob.num_labels} (rough guide, see insar_unwrap.metrics.descriptors)"
+        )
     summary = {
         "source": crop.source,
         "window": {
             "row0": crop.row0,
             "col0": crop.col0,
             "size": size,
+            "looks": crop.looks,
             "epsg": crop.epsg,
             "x_first_last": [float(crop.x[0]), float(crop.x[-1])],
             "y_first_last": [float(crop.y[0]), float(crop.y[-1])],
         },
         "valid_fraction": round(float(valid.mean()), 4),
         "coherence_valid_p5_p50_p95": _percentiles(crop.coherence[valid], [5, 50, 95]),
+        "look_consistency_valid_p5_p50_p95": (
+            _percentiles(crop.consistency[valid], [5, 50, 95]) if crop.looks > 1 else None
+        ),
         "residues": {"nonzero": int(np.abs(res[loops]).sum()), "loops": int(loops.sum())},
         "edges_with_wrap": int(np.count_nonzero(qubo.edges.target)),
+        "mean_fringes_per_32px": round(rate * 32, 4),
+        "mean_fringes_across_crop": round(rate * size, 3),
+        "tree_label_span": span,
+        "edge_weights": weights.summary(),
         "qubo": qubo.summary(),
-        "notes": notes,
+        "warnings": warnings,
     }
     print(yaml.safe_dump(summary, sort_keys=False, width=100), end="")
     return 0

@@ -24,9 +24,10 @@ plan and the scientific caveats that shape it.
 | QUBO/BQM: L2 objective, binary / one-hot encoding, masks, free gauge (default) or pinned reference (`insar_unwrap.qubo`) | implemented (API), verified against brute force on <= 3x3 fields |
 | SA / SQA adapters with wall/CPU timing (`insar_unwrap.solvers`) | implemented (API), smoke-tested on 4x4 |
 | Approved-dataset registry and download with size/checksum verification and provenance sidecar (`insar-unwrap datasets`, `fetch-sample`) | implemented |
-| GUNW reader: native-grid crops of wrapped phase, coherence and mask, grid check by coordinates, mask decoding (`insar_unwrap.io.gunw`, `insar-unwrap inspect`) | implemented, checked on two granules (product spec 1.2.1 and 1.5.0) |
-| `insar-unwrap crop-summary`: configured crop -> validity, residues -> BQM summary (no solving) | implemented (wiring check) |
-| Coherence-based edge weights | not implemented (weight formula undecided; BQMs use uniform weights) |
+| GUNW reader: native-grid crops of wrapped phase, coherence and mask, grid check by coordinates, mask decoding (`insar_unwrap.io.gunw`, `insar-unwrap inspect`) | implemented, checked on four granules (product spec 1.2.1 and 1.5.0) |
+| Complex multilooking of crops (`input.multilook`, `insar_unwrap.io.multilook`) | implemented (API + config), unit-tested |
+| Edge weights: `gamma_i * gamma_j` divided by the median edge weight, uniform as control arm (`insar_unwrap.qubo.weights`, ADR-001 in the wiki) | implemented (API + config), exact-solver test on a 2x2 residue |
+| `insar-unwrap crop-summary`: configured crop -> validity, residues, problem descriptors (mean fringe rate, tree-integrated label span), edge weights -> BQM summary (no solving) | implemented (wiring check) |
 | Metrics: label agreement modulo a constant per component, label-bound saturation, energy statistics, time-to-solution (`insar_unwrap.metrics`) | implemented (API), unit-tested |
 | Experiment runner / CLI, result records, peak-memory measurement | not implemented |
 | SNAPHU runner | not implemented |
@@ -142,7 +143,7 @@ use `PathIntegralAnnealingSampler` names (`num_reads`, `num_sweeps_per_beta`,
 default schedule values are untuned. Unknown keys are rejected. Seeds must be
 in `[0, 2**31 - 1]`, the range the samplers actually accept.
 
-The configuration is consumed by `crop-summary` (input, mask and problem
+The configuration is consumed by `crop-summary` (input, multilook, mask and problem
 sections); there is no experiment runner yet.
 
 ```bash

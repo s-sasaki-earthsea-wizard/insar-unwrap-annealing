@@ -71,10 +71,26 @@ class Hdf5Layers(_Strict):
 
 
 class CropSection(_Strict):
-    """Crop origin on the native grid. Sizes come from ``problem.sizes``."""
+    """Crop origin on the native grid. Sizes come from ``problem.sizes``.
+
+    A crop of size ``n`` covers ``n * multilook.looks`` native pixels per axis
+    starting at ``(row0, col0)``.
+    """
 
     row0: Annotated[int, Field(ge=0)] = 0
     col0: Annotated[int, Field(ge=0)] = 0
+
+
+class MultilookSection(_Strict):
+    """Complex multilooking before the BQM is built.
+
+    ``looks`` is the square block size on the native grid (1: none). Blocks
+    are usable when at least ``min_valid_fraction`` of their native pixels are
+    usable. See ``insar_unwrap.io.multilook``.
+    """
+
+    looks: PositiveInt = 1
+    min_valid_fraction: Annotated[float, Field(gt=0.0, le=1.0)] = 0.5
 
 
 class MaskSection(_Strict):
@@ -103,6 +119,7 @@ class InputSection(_Strict):
     polarization: Literal["HH", "HV", "VH", "VV"] = "HH"
     layers: Hdf5Layers | None = None
     crop: CropSection = CropSection()
+    multilook: MultilookSection = MultilookSection()
     mask: MaskSection = MaskSection()
 
     @model_validator(mode="after")
@@ -138,13 +155,20 @@ class ReferenceSection(_Strict):
 
 
 class ProblemSection(_Strict):
-    """QUBO problem definition."""
+    """QUBO problem definition.
+
+    ``edge_weighting`` and ``weight_normalization`` follow ADR-001 (project
+    wiki): ``coherence`` weights edges by ``gamma_i * gamma_j``, ``uniform``
+    is the control arm, and ``median`` divides by the median edge weight. See
+    ``insar_unwrap.qubo.weights``.
+    """
 
     sizes: list[PositiveInt] = Field(min_length=1)
     label_min: int
     label_max: int
     encoding: Literal["binary", "one_hot"] = "binary"
     edge_weighting: Literal["uniform", "coherence"] = "coherence"
+    weight_normalization: Literal["median", "none"] = "median"
     reference: ReferenceSection = ReferenceSection()
 
     @model_validator(mode="after")

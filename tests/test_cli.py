@@ -50,6 +50,14 @@ def test_inspect_and_crop_summary_on_a_tiny_gunw(make_gunw, example_dict, write_
     assert main(["crop-summary", "--config", str(cfg), "--size", "4"]) == 0
     out = capsys.readouterr().out
     assert "valid_fraction: 1.0" in out and "num_variables: 32" in out
+    assert "kind: coherence" in out and "tree_label_span:" in out
+
+    example_dict["input"]["crop"] = {"row0": 0, "col0": 0}
+    example_dict["input"]["multilook"] = {"looks": 2, "min_valid_fraction": 0.5}
+    cfg = write_yaml(example_dict, "ml.yaml")
+    assert main(["crop-summary", "--config", str(cfg), "--size", "3"]) == 0
+    out = capsys.readouterr().out
+    assert "looks: 2" in out and "native_window:" in out
 
 
 def test_datasets_lists_registry(capsys):

@@ -31,6 +31,8 @@ def test_one_hot_bits_per_pixel(example_dict):
         (lambda d: d["problem"].update(sizes=[32, 32]), "duplicates"),
         (lambda d: d["problem"].update(sizes=[0, 32]), "greater than or equal to 1"),
         (lambda d: d["input"]["mask"].update(coherence_threshold=1.5), "less than or equal to 1"),
+        (lambda d: d["input"]["multilook"].update(looks=0), "greater than or equal to 1"),
+        (lambda d: d["input"]["multilook"].update(min_valid_fraction=0.0), "greater than 0"),
         (lambda d: d["solvers"]["sa"].update(beta_range=[5.0, 1.0]), "beta_min < beta_max"),
         (lambda d: d["solvers"]["sqa"].update(Hp_field=[1.0]), "given together"),
         (

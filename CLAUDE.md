@@ -25,9 +25,9 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 * Identifiers, comments, docstrings, commit messages: English. Google-style docstrings.
 * PEP 8 via ruff (line length 100). `snake_case` functions, `PascalCase` classes.
 * src layout: `src/insar_unwrap/`. Keep modules small. Existing: `phase.py`,
-  `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`,
-  `metrics/{labels,energy}.py`, `io/{datasets,gunw}.py`. Add per-run memory
-  measurement in `metrics` only when its first real implementation lands.
+  `io/{synthetic,datasets,gunw,multilook}.py`, `qubo/{encoding,build,weights}.py`,
+  `solvers/annealing.py`, `metrics/{labels,energy,descriptors}.py`. Add per-run
+  memory measurement in `metrics` only when its first real implementation lands.
 * Never call the pyenv `python3` shim (pyenv has no 3.12 for `.python-version`
   and the shim hangs); use `uv run --locked python`. The checkout is on local
   disk with an in-repo `.venv`; `VENV=` / `UV_PROJECT_ENVIRONMENT` are only for
@@ -42,6 +42,11 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 * SNAPHU has a different objective. Compare image-level results; never call it
   ground truth. Product unwrapped phase is not ground truth either.
 * Rewrap agreement is a necessary, not sufficient, check.
+* Multilook is complex averaging (never of phases), looks ladder 1/3/5. The
+  looks value is an experimental factor that moves fringe density, noise and
+  footprint together: read results against the recorded problem descriptors.
+* Edge weights follow ADR-001 (wiki): `gamma_i * gamma_j`, median-normalized;
+  uniform is the control arm. Do not switch the default without a new ADR.
 * Full-image problems per size (32, 64, 128, 256). Tiling into 4x4 blocks is not
   the default method. 256x256 feasibility is unverified.
 * Integer label range, encoding and reference/gauge handling are configurable;
