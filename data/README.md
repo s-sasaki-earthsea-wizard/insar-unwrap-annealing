@@ -15,8 +15,10 @@ data/
 
 ## Provenance
 
-For every product under `raw/`, keep a sidecar `<file>.provenance.yaml`
-(or a line in a local manifest) with:
+`insar-unwrap fetch-sample NAME` downloads approved datasets
+(`configs/datasets.yaml`) into `raw/NAME/`, verifies size and checksums and
+writes the sidecar `<file>.provenance.yaml` automatically (also for a file that
+was already present and verifies). Per product the record should cover:
 
 * data source and granule identifier
 * product version / processing version

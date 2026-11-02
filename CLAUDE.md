@@ -9,6 +9,8 @@ make sync            # uv sync --locked --group dev
 make check           # ruff check, ruff format --check, pytest
 make validate-config # insar-unwrap validate-config --config configs/experiment.example.yaml
 make doctor          # insar-unwrap doctor
+make datasets / make fetch-sample DATASET=<name> / make inspect FILE=<h5>
+make crop-summary [SIZE=n]  # configured crop -> residues -> BQM summary, no solving
 make docker-build && make docker-check
 ```
 
@@ -24,9 +26,8 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 * PEP 8 via ruff (line length 100). `snake_case` functions, `PascalCase` classes.
 * src layout: `src/insar_unwrap/`. Keep modules small. Existing: `phase.py`,
   `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`,
-  `metrics/{labels,energy}.py`. Add the GUNW reader in `io` (and per-run
-  memory measurement in `metrics`) only when their first real implementation
-  lands.
+  `metrics/{labels,energy}.py`, `io/{datasets,gunw}.py`. Add per-run memory
+  measurement in `metrics` only when its first real implementation lands.
 * Never call the pyenv `python3` shim (pyenv has no 3.12 for `.python-version`
   and the shim hangs); use `uv run --locked python`. The checkout is on local
   disk with an in-repo `.venv`; `VENV=` / `UV_PROJECT_ENVIRONMENT` are only for
@@ -67,10 +68,13 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 ## Scope boundaries (current)
 
 * Local CPU only. No QPU, Braket, Amplify, GPU/CUDA, cloud credentials.
-* Data download: only approved sample datasets into `data/` (never versioned).
-  Approved so far: the no-login NISAR-format sample GUNW generated from
-  ALOS-1 PALSAR data (release D00404). It is not a NISAR observation; never
-  describe it as one. Products that need an Earthdata login need approval.
+* Data download: only datasets listed in `configs/datasets.yaml`, via
+  `fetch-sample`, into `data/raw/` (never versioned, never deleted by automated
+  work). Adding an entry needs Syota's approval. Approved: D00404 (NISAR-format
+  sample generated from ALOS-1 PALSAR data; not a NISAR observation, never
+  describe it as one; plumbing only) and P05023 (NISAR PROVISIONAL GUNW, Los
+  Angeles, Earthdata login via `~/.netrc`; approved 2026-11-03). Never print
+  or copy credentials.
 * No long computations. Tests solve only tiny problems (<= 4x4); smoke runs
   beyond that are not benchmarks and are not recorded as results.
 * Never fabricate results, timings or figures for unimplemented features.

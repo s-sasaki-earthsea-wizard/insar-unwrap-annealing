@@ -66,9 +66,29 @@ difference has to be read with that in mind.
   must never be indexed together.
 * Crops are taken on the native grid. Wrapped angles are never resampled with
   ordinary image resizing to reach a target size.
-* HDF5 dataset paths are configuration, not constants. The example config
-  carries `UNVERIFIED` placeholders until a real product has been inspected
-  (e.g. with `h5dump -n` or h5py).
+* HDF5 dataset paths are configuration, not constants. Verified on two
+  granules (2026-11-02/03): D00404 (product spec 1.2.1, missionId ALOS) and
+  P05023 (spec 1.5.0, missionId NISAR). Both use
+  `/science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/{HH/wrappedInterferogram,
+  HH/coherenceMagnitude, mask}` on a 20 m grid (EPSG 32611 for both), and an
+  80 m `unwrappedInterferogram` grid whose top-left corner coincides with the
+  20 m grid's (centres offset by 30 m), so it nests 4:1.
+* Mask encodings differ: spec 1.2.1 stores a uint8 three-digit code
+  `<water><reference subswath><secondary subswath>`; spec 1.5.0 stores uint32
+  with the same code in bits 0-7 and RSLC anomaly flags in bits 8-23. Fill is
+  255 in both. `io.gunw.usable_mask` handles both (fill, zero subswath digit,
+  anomaly bits; water optional). P05023 has no anomaly bits set.
+* `io.gunw.read_crop` checks that the coherence and mask layers sit under a
+  group whose coordinate arrays equal those of the wrapped layer, then reads
+  only the requested window.
+* Fringe density at the native 20 m posting is low in both granules (block
+  statistics over 256x256 windows, deterministic gradient from summed
+  neighbour products; quick look, not a result): D00404 median 0.04, max 0.37
+  fringes per 32 px; P05023 median 0.015, max 0.06 per 32 px and at most 0.5
+  per 256 px. After 4x4 complex multilooking P05023 reaches at most 0.25 per
+  32 px and 2 per 256 px. Small native crops of such scenes contain at most a
+  wrap line or noise-induced wraps; dense fringes need strong deformation
+  gradients. Whether to multilook before cropping is an open decision.
 * Preprocessing (ISCE3 etc.) happens outside this repository.
 
 ## 4. QUBO formulation (implemented in `qubo/`, verified on tiny fields)
@@ -238,7 +258,9 @@ base classes and plugin registries until there are at least two concrete users.
    only to build and check the reader, masks and weights (decided
    2026-11-02). Real-data measurements will use a fringe-bearing product
    chosen after a new search; products that need an Earthdata login need a
-   separate decision.
+   separate decision. [done 2026-11-03: registry + `fetch-sample`, `inspect`,
+   `io.gunw.read_crop`, `crop-summary`; P05023 (login) approved and checked;
+   coherence-based edge weights still open]
 5. [done 2026-11-02, except per-run peak memory] `reference.mode: none` and
    `metrics/` (comparison modulo a constant per component, energy statistics,
    time-to-solution, label-bound saturation).

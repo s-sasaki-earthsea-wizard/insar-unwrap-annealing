@@ -23,7 +23,10 @@ plan and the scientific caveats that shape it.
 | Synthetic fields with exact integer truth (`insar_unwrap.io.synthetic`) | implemented (API) |
 | QUBO/BQM: L2 objective, binary / one-hot encoding, masks, free gauge (default) or pinned reference (`insar_unwrap.qubo`) | implemented (API), verified against brute force on <= 3x3 fields |
 | SA / SQA adapters with wall/CPU timing (`insar_unwrap.solvers`) | implemented (API), smoke-tested on 4x4 |
-| GUNW reader (HDF5 layers, grid consistency checks) | not implemented (needs a real granule) |
+| Approved-dataset registry and download with size/checksum verification and provenance sidecar (`insar-unwrap datasets`, `fetch-sample`) | implemented |
+| GUNW reader: native-grid crops of wrapped phase, coherence and mask, grid check by coordinates, mask decoding (`insar_unwrap.io.gunw`, `insar-unwrap inspect`) | implemented, checked on two granules (product spec 1.2.1 and 1.5.0) |
+| `insar-unwrap crop-summary`: configured crop -> validity, residues -> BQM summary (no solving) | implemented (wiring check) |
+| Coherence-based edge weights | not implemented (weight formula undecided; BQMs use uniform weights) |
 | Metrics: label agreement modulo a constant per component, label-bound saturation, energy statistics, time-to-solution (`insar_unwrap.metrics`) | implemented (API), unit-tested |
 | Experiment runner / CLI, result records, peak-memory measurement | not implemented |
 | SNAPHU runner | not implemented |
@@ -71,8 +74,9 @@ stats = energy_stats(sa.sampleset)
 * Optional: `snaphu` on `PATH`. Not needed for the skeleton; `doctor` reports
   whether it is present.
 
-No data download, account, API key, or network service is needed for anything
-documented here.
+Only `fetch-sample` uses the network. It needs `curl`; datasets marked
+`login` in `configs/datasets.yaml` also need an Earthdata Login entry for
+`urs.earthdata.nasa.gov` in `~/.netrc`. Everything else works offline.
 
 ## Local setup (uv)
 
@@ -126,9 +130,11 @@ docker compose run --rm app insar-unwrap doctor
 
 ## Configuration
 
-`configs/experiment.example.yaml` is a complete, validating example. Items
-marked `UNVERIFIED` (HDF5 dataset paths, the input file name) are placeholders
-to be confirmed against a real GUNW product. SA parameters use the exact
+`configs/experiment.example.yaml` is a complete, validating example. Its input
+is the plumbing sample `nisar_sample_alos1_gunw_d00404` (a NISAR-format product
+generated from ALOS-1 PALSAR data, not a NISAR observation, almost no fringes);
+the HDF5 layer paths were checked on that file and on a NISAR PROVISIONAL GUNW.
+SA parameters use the exact
 keyword names of `dwave.samplers.SimulatedAnnealingSampler`. SQA parameters
 use `PathIntegralAnnealingSampler` names (`num_reads`, `num_sweeps_per_beta`,
 `Hp_field`, `Hd_field`) plus a `schedule` block (`beta`, `gamma_start`,
@@ -136,8 +142,15 @@ use `PathIntegralAnnealingSampler` names (`num_reads`, `num_sweeps_per_beta`,
 default schedule values are untuned. Unknown keys are rejected. Seeds must be
 in `[0, 2**31 - 1]`, the range the samplers actually accept.
 
-The configuration is validated but not yet consumed by a runner: label range,
-encoding and reference are currently passed to `build_unwrap_bqm` directly.
+The configuration is consumed by `crop-summary` (input, mask and problem
+sections); there is no experiment runner yet.
+
+```bash
+make datasets                                          # approved datasets
+make fetch-sample DATASET=nisar_sample_alos1_gunw_d00404  # ~252 MiB, no login
+make inspect FILE=data/raw/<name>/<file>.h5            # layers, grids, masks
+make crop-summary SIZE=64                              # crop -> residues -> BQM size
+```
 
 ## Positioning of external tools
 
@@ -153,6 +166,8 @@ encoding and reference are currently passed to `build_unwrap_bqm` directly.
 1. Verify phase/sign/gauge conventions and the QUBO mapping on small synthetic
    data. (Done for tiny fields, including gauge-aware metrics.)
 2. Inspect a real GUNW product; load wrapped phase, coherence and mask on one grid.
+   (Done for the reader; a fringe-bearing product for measurements is still
+   being chosen.)
 3. Run SA vs SQA on the same QUBO at 32x32; compare images against SNAPHU.
 4. Scale to 64, 128, 256; measure quality, time and memory.
 5. Select a few cases for QPU comparison after confirming access terms.
