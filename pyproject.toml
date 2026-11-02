@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Benchmark skeleton: InSAR phase unwrapping as a QUBO, solved with SA and SQA, compared against SNAPHU"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = "MIT"
+license = "Apache-2.0"
 authors = [{ name = "Syota Sasaki", email = "syota.sasaki@earthsea-wizard.com" }]
 dependencies = [
   "numpy>=2.0",

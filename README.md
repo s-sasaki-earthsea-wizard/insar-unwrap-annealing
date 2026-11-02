@@ -111,4 +111,5 @@ keyword names of `dwave.samplers.SimulatedAnnealingSampler` (SA) and
 
 ## License
 
-MIT (see `pyproject.toml`).
+Copyright 2026 Syota Sasaki. Licensed under the Apache License, Version 2.0;
+see [LICENSE](LICENSE).
