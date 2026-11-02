@@ -1,0 +1,23 @@
+# Docker Compose v2. Build with `make docker-build`, which passes the host
+# uid/gid as HOST_UID/HOST_GID so files written to results/ stay yours.
+# (UID itself is a read-only shell variable in bash, hence the prefix.)
+services:
+  app:
+    build:
+      context: .
+      args:
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
+    image: insar-unwrap-annealing:local
+    working_dir: /work
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+      UV_CACHE_DIR: /opt/uv-cache
+    volumes:
+      # Source and configs are mounted for development; the container's
+      # environment is in /opt/venv and is not affected by a host .venv.
+      - ./src:/work/src:ro
+      - ./tests:/work/tests:ro
+      - ./configs:/work/configs:ro
+      - ./data:/work/data:ro
+      - ./results:/work/results

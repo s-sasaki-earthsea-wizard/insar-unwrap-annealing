@@ -1,0 +1,78 @@
+# Example experiment configuration for insar-unwrap.
+#
+# Validate with:  uv run --locked insar-unwrap validate-config --config configs/experiment.example.yaml
+#
+# Validation checks syntax and numerical consistency only. It does NOT check
+# that input.path exists, so this file validates before any data is downloaded.
+#
+# Anything marked UNVERIFIED is a placeholder that must be confirmed against a
+# real NISAR GUNW product (h5dump / h5py inspection) before it is used.
+
+experiment:
+  name: nisar-gunw-sa-vs-sqa-pilot
+  seed: 20261102            # forwarded to samplers that accept `seed`
+  output_dir: results/pilot # created at run time; never versioned
+
+input:
+  kind: nisar_gunw          # nisar_gunw | synthetic
+  # UNVERIFIED: local path of a downloaded GUNW granule. Not shipped with the repo.
+  path: data/raw/NISAR_L2_GUNW_PLACEHOLDER.h5
+  frequency: A
+  polarization: HH
+  layers:
+    # UNVERIFIED: HDF5 dataset paths. GUNW stores wrapped phase, coherence and
+    # unwrapped phase on grids that may differ in shape and resolution. The
+    # wrapped and coherence layers below MUST resolve to the same grid; this is
+    # checked at load time, not here.
+    wrapped: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/HH/wrappedInterferogram
+    coherence: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/HH/coherenceMagnitude
+    mask: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/mask
+  crop:
+    # Origin (row, col) of the crop on the native grid. Windows of each size in
+    # problem.sizes are cut from this origin. No resampling is applied.
+    row0: 0
+    col0: 0
+  mask:
+    use_valid_mask: true
+    coherence_threshold: 0.3 # pixels below this are treated as invalid
+
+problem:
+  # Progressive evaluation: each size is a full image, not a tiling.
+  # 256 is a target, not a demonstrated capability.
+  sizes: [32, 64, 128, 256]
+  # Integer ambiguity k_i in phi_i = psi_i + 2*pi*k_i.
+  # With binary encoding, 4 labels -> 2 bits/pixel. This is a choice, not a law.
+  label_min: -2
+  label_max: 1
+  encoding: binary          # binary | one_hot
+  edge_weighting: coherence # uniform | coherence
+  reference:
+    mode: per_component     # per_component | pixel
+    # pixel: [0, 0]         # only when mode == pixel
+
+solvers:
+  sa:
+    # dwave.samplers.SimulatedAnnealingSampler
+    enabled: true
+    num_reads: 20
+    num_sweeps: 1000
+    beta_schedule_type: geometric
+    # beta_range: [0.1, 10.0]  # omit to let the sampler derive it from the BQM
+  sqa:
+    # dwave.samplers.PathIntegralAnnealingSampler (dwave-samplers >= 1.8).
+    # This is a classical path-integral Monte Carlo simulation of a transverse-field
+    # Ising model. It is not a state-vector simulation and does not reproduce QPU
+    # real-time dynamics.
+    enabled: true
+    num_reads: 20
+    num_sweeps: 1000
+    beta_schedule_type: geometric
+    Gamma: 1.0              # transverse field strength
+    # Hp_field / Hd_field: explicit longitudinal/transverse schedules (same length,
+    # non-negative). Omit to use the sampler default built from Gamma and beta_range.
+  snaphu:
+    # External reference unwrapper. Different objective; compared as an image
+    # processing result, not as a QUBO solver.
+    enabled: false
+    executable: snaphu
+    # config_template: configs/snaphu.conf
