@@ -53,7 +53,9 @@ problem:
   label_min: -2
   label_max: 1
   encoding: binary          # binary | one_hot
+  # ADR-001 (wiki): coherence -> w_ij = gamma_i * gamma_j; uniform is the control arm.
   edge_weighting: coherence # uniform | coherence
+  weight_normalization: median # median (median edge weight -> 1) | none
   reference:
     # none: free gauge, labels compared modulo one constant per component.
     # per_component / pixel: pinned gauge (exact tests, comparison arm).

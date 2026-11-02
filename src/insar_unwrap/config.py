@@ -155,13 +155,20 @@ class ReferenceSection(_Strict):
 
 
 class ProblemSection(_Strict):
-    """QUBO problem definition."""
+    """QUBO problem definition.
+
+    ``edge_weighting`` and ``weight_normalization`` follow ADR-001 (project
+    wiki): ``coherence`` weights edges by ``gamma_i * gamma_j``, ``uniform``
+    is the control arm, and ``median`` divides by the median edge weight. See
+    ``insar_unwrap.qubo.weights``.
+    """
 
     sizes: list[PositiveInt] = Field(min_length=1)
     label_min: int
     label_max: int
     encoding: Literal["binary", "one_hot"] = "binary"
     edge_weighting: Literal["uniform", "coherence"] = "coherence"
+    weight_normalization: Literal["median", "none"] = "median"
     reference: ReferenceSection = ReferenceSection()
 
     @model_validator(mode="after")

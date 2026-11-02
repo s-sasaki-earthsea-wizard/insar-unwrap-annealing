@@ -34,7 +34,7 @@ from insar_unwrap.io.datasets import (
 )
 from insar_unwrap.io.gunw import GunwError, describe, read_crop
 from insar_unwrap.phase import residues
-from insar_unwrap.qubo import build_unwrap_bqm
+from insar_unwrap.qubo import build_unwrap_bqm, edge_weights
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -183,12 +183,20 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
             looks=inp.multilook.looks,
             min_valid_fraction=inp.multilook.min_valid_fraction,
         )
+        weights = edge_weights(
+            prob.edge_weighting,
+            crop.valid,
+            crop.coherence,
+            normalization=prob.weight_normalization,
+        )
         qubo = build_unwrap_bqm(
             crop.wrapped,
             label_min=prob.label_min,
             label_max=prob.label_max,
             encoding=prob.encoding,
             valid=crop.valid,
+            weight_h=weights.horizontal,
+            weight_v=weights.vertical,
             reference_mode=prob.reference.mode,
             reference_pixel=prob.reference.pixel,
         )
@@ -199,9 +207,6 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
     valid = crop.valid
     loops = valid[:-1, :-1] & valid[1:, :-1] & valid[:-1, 1:] & valid[1:, 1:]
     res = residues(np.where(valid, crop.wrapped, 0.0))
-    notes = []
-    if prob.edge_weighting == "coherence":
-        notes.append("edge_weighting 'coherence' is not implemented yet; BQM uses uniform weights")
     summary = {
         "source": crop.source,
         "window": {
@@ -216,8 +221,8 @@ def _cmd_crop_summary(args: argparse.Namespace) -> int:
         "coherence_valid_p5_p50_p95": _percentiles(crop.coherence[valid], [5, 50, 95]),
         "residues": {"nonzero": int(np.abs(res[loops]).sum()), "loops": int(loops.sum())},
         "edges_with_wrap": int(np.count_nonzero(qubo.edges.target)),
+        "edge_weights": weights.summary(),
         "qubo": qubo.summary(),
-        "notes": notes,
     }
     print(yaml.safe_dump(summary, sort_keys=False, width=100), end="")
     return 0
