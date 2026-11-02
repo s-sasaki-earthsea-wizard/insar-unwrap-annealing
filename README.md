@@ -148,6 +148,7 @@ sections); there is no experiment runner yet.
 ```bash
 make datasets                                          # approved datasets
 make fetch-sample DATASET=nisar_sample_alos1_gunw_d00404  # ~252 MiB, no login
+make fetch-sample DATASET=nisar_gunw_provisional_p05023_greenland  # ~1.6 GiB, Earthdata login
 make inspect FILE=data/raw/<name>/<file>.h5            # layers, grids, masks
 make crop-summary SIZE=64                              # crop -> residues -> BQM size
 ```
@@ -166,8 +167,9 @@ make crop-summary SIZE=64                              # crop -> residues -> BQM
 1. Verify phase/sign/gauge conventions and the QUBO mapping on small synthetic
    data. (Done for tiny fields, including gauge-aware metrics.)
 2. Inspect a real GUNW product; load wrapped phase, coherence and mask on one grid.
-   (Done for the reader; a fringe-bearing product for measurements is still
-   being chosen.)
+   (Done for the reader. Measurement scenes chosen 2026-11-03: NISAR
+   PROVISIONAL GUNW over Greenland (ice flow) and Kumamoto (earthquake pair),
+   both in the dataset registry; crops not chosen yet.)
 3. Run SA vs SQA on the same QUBO at 32x32; compare images against SNAPHU.
 4. Scale to 64, 128, 256; measure quality, time and memory.
 5. Select a few cases for QPU comparison after confirming access terms.

@@ -33,3 +33,34 @@ datasets:
     requires_login: true
     landing_page: https://github.com/isceplus/2026-isceplus/tree/main/3.3_NISAR_StandardProducts_Workflows
     collection: NISAR_L2_GUNW_PROVISIONAL_V1 (C2854335566-ASF)
+
+  nisar_gunw_provisional_p05023_greenland:
+    description: >-
+      NISAR PROVISIONAL L2 GUNW, western Greenland ice sheet (Jakobshavn
+      sector), 2026-10-04 / 2026-10-16 (12 days, descending, track 69 frame 53,
+      partial frame, 77 MHz). Ice-flow fringes, denser than the LA granule.
+      Ionospheric phase is possible (October, high latitude). Measurement scene
+      approved 2026-11-03.
+    filename: NISAR_L2_PR_GUNW_032_069_D_053_033_7700_SH_20261004T234341_20261004T234418_20261016T234341_20261016T234418_P05023_N_P_J_001.h5
+    url: https://nisar.asf.earthdatacloud.nasa.gov/NISAR/NISAR_L2_GUNW_PROVISIONAL_V1/NISAR_L2_PR_GUNW_032_069_D_053_033_7700_SH_20261004T234341_20261004T234418_20261016T234341_20261016T234418_P05023_N_P_J_001/NISAR_L2_PR_GUNW_032_069_D_053_033_7700_SH_20261004T234341_20261004T234418_20261016T234341_20261016T234418_P05023_N_P_J_001.h5
+    size_bytes: 1723858944
+    md5: 19f6128253c6e77b65f0c23ac0c9e9e4
+    sha256: 6613b854a7971f39a1d468779c4d536d9ea9f60cb284a29634a112214307e89d
+    checksum_source: md5 from CMR granule metadata (G4376212893-ASF); sha256 of the first download on 2026-11-03 (md5 matched)
+    requires_login: true
+    collection: NISAR_L2_GUNW_PROVISIONAL_V1 (C2854335566-ASF)
+
+  nisar_gunw_provisional_p05023_kumamoto:
+    description: >-
+      NISAR PROVISIONAL L2 GUNW, Kumamoto (Kyushu), 2026-07-21 / 2026-08-14
+      (24 days, ascending, track 24 frame 18). The pair spans the 2026-07-28
+      Kumamoto earthquake; co-seismic fringes near the fault, decorrelated
+      Yatsushiro Sea. Measurement scene approved 2026-11-03.
+    filename: NISAR_L2_PR_GUNW_026_024_A_018_028_4000_SH_20260721T202900_20260721T202934_20260814T202858_20260814T202933_P05023_N_F_J_001.h5
+    url: https://nisar.asf.earthdatacloud.nasa.gov/NISAR/NISAR_L2_GUNW_PROVISIONAL_V1/NISAR_L2_PR_GUNW_026_024_A_018_028_4000_SH_20260721T202900_20260721T202934_20260814T202858_20260814T202933_P05023_N_F_J_001/NISAR_L2_PR_GUNW_026_024_A_018_028_4000_SH_20260721T202900_20260721T202934_20260814T202858_20260814T202933_P05023_N_F_J_001.h5
+    size_bytes: 2348810240
+    md5: cfac9529b8020365c4325c342dc3d629
+    sha256: d75aa1983768ae9fc99535eccfdb73b01b49afc009c635246e356299a91d49e1
+    checksum_source: md5 from CMR granule metadata (G4283888428-ASF); sha256 of the first download on 2026-11-03 (md5 matched)
+    requires_login: true
+    collection: NISAR_L2_GUNW_PROVISIONAL_V1 (C2854335566-ASF)

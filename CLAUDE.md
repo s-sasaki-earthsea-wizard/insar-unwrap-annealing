@@ -72,9 +72,11 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
   `fetch-sample`, into `data/raw/` (never versioned, never deleted by automated
   work). Adding an entry needs Syota's approval. Approved: D00404 (NISAR-format
   sample generated from ALOS-1 PALSAR data; not a NISAR observation, never
-  describe it as one; plumbing only) and P05023 (NISAR PROVISIONAL GUNW, Los
-  Angeles, Earthdata login via `~/.netrc`; approved 2026-11-03). Never print
-  or copy credentials.
+  describe it as one; plumbing only) and three NISAR PROVISIONAL GUNW granules
+  of composite release P05023, all with Earthdata login via `~/.netrc`, approved
+  2026-11-03: Los Angeles (sparse fringes), and the measurement scenes Greenland
+  (Jakobshavn ice flow) and Kumamoto (2026-07-28 earthquake pair). Kujukuri
+  (ALOS-2 stack) is deferred. Never print or copy credentials.
 * No long computations. Tests solve only tiny problems (<= 4x4); smoke runs
   beyond that are not benchmarks and are not recorded as results.
 * Never fabricate results, timings or figures for unimplemented features.
