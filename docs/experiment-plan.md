@@ -88,7 +88,25 @@ difference has to be read with that in mind.
   per 256 px. After 4x4 complex multilooking P05023 reaches at most 0.25 per
   32 px and 2 per 256 px. Small native crops of such scenes contain at most a
   wrap line or noise-induced wraps; dense fringes need strong deformation
-  gradients. Whether to multilook before cropping is an open decision.
+  gradients.
+* Multilooking (decided 2026-11-03): looks ladder 1, 3, 5 (square blocks on
+  the native grid), started without multilooking. Pixel validity is decided
+  on the native grid; a block is usable when at least half of its pixels are
+  (`input.multilook.min_valid_fraction`). The interferogram is averaged as
+  complex values (amplitude-weighted, since GUNW stores amplitude), never as
+  phases; coherence is the block mean of the product coherence;
+  `|sum z| / sum |z|` is recorded as a diagnostic only. The product's 20 m
+  layer already carries 6 x 5 looks (azimuth x range) and the 80 m unwrapped
+  layer 16 x 13 (P05023 LA metadata), so the 80 m grid is not a 4 x 4 block
+  average of the 20 m layer.
+* The multilook factor is an experimental factor, not a nuisance. It raises
+  the fringe density per pixel (wider label range), lowers phase noise
+  (fewer residues) and enlarges the footprint, all at once. SA vs SQA within
+  one (scene, looks, size) cell is unaffected because both see the same BQM;
+  across cells, performance is read against recorded problem descriptors
+  (fringe rate, residues, wrapped edges, components, label range, variables),
+  not against the looks value. Causal statements about fringe density come
+  from synthetic ramps, where it is the only knob.
 * Measurement scenes (decided 2026-11-03): two NISAR PROVISIONAL GUNW
   granules of composite release P05023 with denser fringes than LA, found by
   screening CMR metadata and public browse images (not by reading the HDF5):
@@ -116,8 +134,19 @@ should match the wrapped gradient:
     a_ij = ( W(psi_j - psi_i) - (psi_j - psi_i) ) / (2*pi)   in {-1, 0, 1}
 
 plus, for one-hot encoding only, a penalty for violated one-hot constraints.
-W(.) wraps to (-pi, pi] and w_ij is derived from coherence or set to 1. This
-is the L2 cost of Kelany et al. (2020), eq. (7), without their unary term.
+W(.) wraps to (-pi, pi]. This is the L2 cost of Kelany et al. (2020), eq. (7),
+without their unary term.
+
+Edge weights (ADR-001 in the project wiki, decided 2026-11-03):
+`w_ij = gamma_i * gamma_j`, divided by the median edge weight of the crop so
+that the typical edge weighs 1, as in the uniform control arm
+(`problem.edge_weighting: uniform`). A weight is the price of a cut on that
+edge; weights move cuts, not residues. Inverse-variance weights
+`2 L gamma^2 / (1 - gamma^2)` were deferred: their dynamic range (40 to over
+150 within threshold 0.3) clashes with a fixed SQA beta, the Gaussian model
+fails at low coherence, and they carry L explicitly. The label range is set
+by hand per cell, guided by the tree-integrated label span that crop-summary
+prints, and checked afterwards with `metrics.bound_saturation`.
 
 Correction (2026-11-02): an earlier draft of this memo wrote the summand as
 `( W(psi_j - psi_i) + 2*pi*(k_j - k_i) )^2`. Because |W(.)| <= pi, that
@@ -235,11 +264,14 @@ src/insar_unwrap/
   config.py    pydantic schema + loader (exists)
   doctor.py    environment report (exists)
   phase.py     wrap(), integer gradient targets, residues (exists)
-  io/          synthetic.py exists; GUNW reader + grid checks planned
-  qubo/        encoding.py, build.py: BQM, encodings, gauge handling (exist)
+  io/          synthetic.py, datasets.py (registry, fetch), gunw.py (reader,
+               grid checks, masks), multilook.py (exist)
+  qubo/        encoding.py, build.py: BQM, encodings, gauge handling;
+               weights.py: uniform / coherence edge weights (exist)
   solvers/     annealing.py: SA and SQA adapters (exist); SNAPHU subprocess planned
   metrics/     labels.py (agreement modulo a constant, saturation), energy.py
-               (energy statistics, TTS) exist; per-run memory planned
+               (energy statistics, TTS), descriptors.py (fringe rate, label
+               span) exist; per-run memory planned
 ```
 
 The SA/SQA adapters record wall and CPU time of the `sample()` call only.
@@ -270,11 +302,13 @@ base classes and plugin registries until there are at least two concrete users.
    chosen after a new search; products that need an Earthdata login need a
    separate decision. [done 2026-11-03: registry + `fetch-sample`, `inspect`,
    `io.gunw.read_crop`, `crop-summary`; P05023 (login) approved and checked;
-   coherence-based edge weights still open]
+   multilooking and coherence edge weights added 2026-11-03]
 5. [done 2026-11-02, except per-run peak memory] `reference.mode: none` and
    `metrics/` (comparison modulo a constant per component, energy statistics,
    time-to-solution, label-bound saturation).
-6. 32x32 pilot: SA vs SQA (and the Hd = 0 control arm) energies and times;
+6. Crop selection on the Greenland and Kumamoto granules for looks 1, 3, 5
+   (block statistics over each frame; selection rule to be agreed), then the
+   32x32 pilot: SA vs SQA (and the Hd = 0 control arm) energies and times;
    SNAPHU on the same crop once its installation is decided.
 7. Scale up, record metrics; how to approach 256x256 is decided later.
 
