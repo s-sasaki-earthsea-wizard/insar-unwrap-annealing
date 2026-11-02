@@ -4,9 +4,8 @@
 #
 # Validation checks syntax and numerical consistency only. It does NOT check
 # that input.path exists, so this file validates before any data is downloaded.
-#
-# Anything marked UNVERIFIED is a placeholder that must be confirmed against a
-# real NISAR GUNW product (h5dump / h5py inspection) before it is used.
+# Fetch the input with `make fetch-sample DATASET=nisar_sample_alos1_gunw_d00404`
+# and check the wiring with `make crop-summary`.
 
 experiment:
   name: nisar-gunw-sa-vs-sqa-pilot
@@ -15,25 +14,29 @@ experiment:
 
 input:
   kind: nisar_gunw          # nisar_gunw | synthetic
-  # UNVERIFIED: local path of a downloaded GUNW granule. Not shipped with the repo.
-  path: data/raw/NISAR_L2_GUNW_PLACEHOLDER.h5
+  # Plumbing sample only: NISAR-format GUNW generated from ALOS-1 PALSAR data
+  # (D00404). Not a NISAR observation, almost no fringes; never use it for
+  # measurements. See configs/datasets.yaml.
+  path: data/raw/nisar_sample_alos1_gunw_d00404/NISAR_L2_PR_GUNW_001_030_A_019_002_2000_SH_20081012T060911_20081012T060925_20081127T061000_20081127T061014_D00404_N_F_J_001.h5
   frequency: A
   polarization: HH
   layers:
-    # UNVERIFIED: HDF5 dataset paths. GUNW stores wrapped phase, coherence and
-    # unwrapped phase on grids that may differ in shape and resolution. The
-    # wrapped and coherence layers below MUST resolve to the same grid; this is
-    # checked at load time, not here.
+    # Verified on D00404 (product spec 1.2.1) and P05023 (spec 1.5.0). The
+    # wrapped, coherence and mask layers must share one grid; read_crop checks
+    # their coordinate arrays. The 80 m unwrappedInterferogram group is a
+    # different grid and is not an input.
     wrapped: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/HH/wrappedInterferogram
     coherence: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/HH/coherenceMagnitude
     mask: /science/LSAR/GUNW/grids/frequencyA/wrappedInterferogram/mask
   crop:
-    # Origin (row, col) of the crop on the native grid. Windows of each size in
-    # problem.sizes are cut from this origin. No resampling is applied.
-    row0: 0
-    col0: 0
+    # Origin (row, col) of the crop on the native 20 m grid. Windows of each
+    # size in problem.sizes are cut from this origin. No resampling is applied.
+    # (2048, 1792) is a fully valid 256x256 window of D00404.
+    row0: 2048
+    col0: 1792
   mask:
-    use_valid_mask: true
+    use_valid_mask: true     # decode fill / subswath / anomaly bits of the mask
+    exclude_water: true
     coherence_threshold: 0.3 # pixels below this are treated as invalid
 
 problem:

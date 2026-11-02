@@ -78,9 +78,15 @@ class CropSection(_Strict):
 
 
 class MaskSection(_Strict):
-    """How invalid pixels are decided."""
+    """How invalid pixels are decided.
+
+    With ``use_valid_mask`` the product mask is decoded by
+    ``insar_unwrap.io.gunw.usable_mask`` (fill, subswath digits, anomaly bits;
+    water optionally).
+    """
 
     use_valid_mask: bool = True
+    exclude_water: bool = True
     coherence_threshold: UnitInterval = 0.0
 
 

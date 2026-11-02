@@ -1,0 +1,35 @@
+# Approved sample datasets. `insar-unwrap fetch-sample NAME` downloads only
+# entries listed here into data/raw/NAME/, verifies size and checksums, and
+# writes a <file>.provenance.yaml sidecar. Adding an entry needs Syota's
+# approval (see CLAUDE.md, scope boundaries). Data is never versioned.
+
+datasets:
+  nisar_sample_alos1_gunw_d00404:
+    description: >-
+      Pre-launch NISAR-format L2 GUNW generated from ALOS-1 PALSAR data
+      (2008-10-12 / 2008-11-27, ascending, Antelope Valley CA; missionId ALOS,
+      product spec 1.2.1). Not a NISAR observation. Almost no fringes: used
+      only to build and check the reader, masks and weights.
+    filename: NISAR_L2_PR_GUNW_001_030_A_019_002_2000_SH_20081012T060911_20081012T060925_20081127T061000_20081127T061014_D00404_N_F_J_001.h5
+    url: https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/GUNW/NISAR_L2_PR_GUNW_001_030_A_019_002_2000_SH_20081012T060911_20081012T060925_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L2_PR_GUNW_001_030_A_019_002_2000_SH_20081012T060911_20081012T060925_20081127T061000_20081127T061014_D00404_N_F_J_001.h5
+    size_bytes: 264241152
+    sha256: 78703c13bd7aafaf5520dbe098c5e1b6f2dec96cc6c12a12c8930091e7531c98
+    checksum_source: sha256 of the first download on 2026-11-02 (no published checksum found)
+    requires_login: false
+    landing_page: https://science.nasa.gov/mission/nisar/sample-data/
+
+  nisar_gunw_provisional_p05023_la:
+    description: >-
+      NISAR PROVISIONAL L2 GUNW, Los Angeles region, 2026-06-27 / 2026-07-09
+      (12 days, descending, track 13 frame 71; missionId NISAR, product spec
+      1.5.0, product version 1.0.11). Used in the ISCE+ 2026 GUNW tutorial.
+      Fringes are smooth and sparse at the native 20 m posting.
+    filename: NISAR_L2_PR_GUNW_024_013_D_071_025_4000_SH_20260627T024036_20260627T024114_20260709T024036_20260709T024113_P05023_N_F_J_001.h5
+    url: https://nisar.asf.earthdatacloud.nasa.gov/NISAR/NISAR_L2_GUNW_PROVISIONAL_V1/NISAR_L2_PR_GUNW_024_013_D_071_025_4000_SH_20260627T024036_20260627T024114_20260709T024036_20260709T024113_P05023_N_F_J_001/NISAR_L2_PR_GUNW_024_013_D_071_025_4000_SH_20260627T024036_20260627T024114_20260709T024036_20260709T024113_P05023_N_F_J_001.h5
+    size_bytes: 2483027968
+    md5: fbff0eed46d84d092d2a411823014b90
+    sha256: 21612eb05bee40fd2f3510ff005622efc485e881f7fc4e591af337857d703061
+    checksum_source: md5 from CMR granule metadata; sha256 of the first download on 2026-11-03 (md5 matched)
+    requires_login: true
+    landing_page: https://github.com/isceplus/2026-isceplus/tree/main/3.3_NISAR_StandardProducts_Workflows
+    collection: NISAR_L2_GUNW_PROVISIONAL_V1 (C2854335566-ASF)
