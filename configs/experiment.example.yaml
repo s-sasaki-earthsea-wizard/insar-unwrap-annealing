@@ -47,7 +47,9 @@ problem:
   encoding: binary          # binary | one_hot
   edge_weighting: coherence # uniform | coherence
   reference:
-    mode: per_component     # per_component | pixel
+    # none: free gauge, labels compared modulo one constant per component.
+    # per_component / pixel: pinned gauge (exact tests, comparison arm).
+    mode: none              # none | per_component | pixel
     # pixel: [0, 0]         # only when mode == pixel
 
 solvers:
