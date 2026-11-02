@@ -22,8 +22,13 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
 
 * Identifiers, comments, docstrings, commit messages: English. Google-style docstrings.
 * PEP 8 via ruff (line length 100). `snake_case` functions, `PascalCase` classes.
-* src layout: `src/insar_unwrap/`. Keep modules small; add `io`, `qubo`, `solvers`,
-  `metrics` only when their first real implementation lands.
+* src layout: `src/insar_unwrap/`. Keep modules small. Existing: `phase.py`,
+  `io/synthetic.py`, `qubo/{encoding,build}.py`, `solvers/annealing.py`. Add
+  `metrics` (and the GUNW reader in `io`) only when their first real
+  implementation lands.
+* The repo lives on a CIFS share: keep the venv off the share
+  (`UV_PROJECT_ENVIRONMENT=$HOME/.cache/insar-unwrap-annealing/venv`) and never
+  call the pyenv `python3` shim (it hangs); use `uv run --locked python`.
 * Tests cover entry points and boundaries, not exhaustive matrices.
 * Session notes go to `.claude-notes/` (not versioned).
 
@@ -43,12 +48,22 @@ Do not modify the system Python. Do not create `.venv` inside the Docker image
   path-integral Monte Carlo. Do not describe it as a state-vector simulation,
   do not apply state-vector memory limits to it, and do not treat it as a
   faithful model of QPU dynamics. `SimulatedAnnealingSampler` is SA, not SQA.
+* SQA must run with `beta_schedule_type="custom"` and `Hd_field > 0` somewhere.
+  The sampler's linear/geometric schedules zero the transverse field and ignore
+  `Gamma` (dwave-samplers 1.8.0), i.e. they are classical annealing. Do not
+  reintroduce `Gamma` or non-custom SQA schedules in the config.
+* Objective is `sum w * (k_t - k_s - a)^2` with
+  `a = (W(dpsi) - dpsi) / 2pi`; not `(W(dpsi) + 2pi dk)^2` (that never unwraps).
+* Compare label fields modulo one constant per component; a single reference
+  pixel is a weak gauge pin (bulk shift costs only the reference's edge weights).
 * No claims of quantum advantage or speed-up over SNAPHU.
 * Separate synthetic-data implementation checks from real-data evaluation.
 
 ## Scope boundaries (current)
 
 * Local CPU only. No QPU, Braket, Amplify, GPU/CUDA, cloud credentials.
-* No data download, no long computations, no QUBO solving yet.
+* No data download, no long computations. Tests solve only tiny problems
+  (<= 4x4); smoke runs beyond that are not benchmarks and are not recorded as
+  results.
 * Never fabricate results, timings or figures for unimplemented features.
 * Record implementation status honestly in README and docs.

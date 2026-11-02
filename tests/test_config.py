@@ -31,7 +31,22 @@ def test_one_hot_bits_per_pixel(example_dict):
         (lambda d: d["input"]["mask"].update(coherence_threshold=1.5), "less than or equal to 1"),
         (lambda d: d["solvers"]["sa"].update(beta_range=[5.0, 1.0]), "beta_min < beta_max"),
         (lambda d: d["solvers"]["sqa"].update(Hp_field=[1.0]), "given together"),
-        (lambda d: d["solvers"]["sqa"].update(Gamma=0.0), "greater than 0"),
+        (
+            lambda d: d["solvers"]["sqa"].update(Hp_field=[1.0], Hd_field=[1.0]),
+            "not both",
+        ),
+        (
+            lambda d: (
+                d["solvers"]["sqa"].pop("schedule"),
+                d["solvers"]["sqa"].update(Hp_field=[1.0, 2.0], Hd_field=[0.0, 0.0]),
+            ),
+            "classical annealing",
+        ),
+        (lambda d: d["solvers"]["sqa"]["schedule"].update(gamma_end=5.0), "gamma_end must be"),
+        # Gamma and the linear/geometric schedules are deliberately not accepted.
+        (lambda d: d["solvers"]["sqa"].update(Gamma=1.0), "Extra inputs"),
+        (lambda d: d["solvers"]["sqa"].update(beta_schedule_type="geometric"), "Extra inputs"),
+        (lambda d: d["experiment"].update(seed=2**31), "less than or equal to 2147483647"),
         (lambda d: d["solvers"]["sqa"].update(bogus_argument=3), "Extra inputs"),
         (lambda d: d["input"].pop("layers"), "input.layers is required"),
         (lambda d: d["problem"]["reference"].update(mode="pixel"), "pixel is required"),
@@ -67,3 +82,16 @@ def test_non_mapping_yaml_is_rejected(tmp_path):
 def test_missing_file_is_a_config_error(tmp_path):
     with pytest.raises(ConfigError, match="cannot read"):
         load_config(tmp_path / "nope.yaml")
+
+
+def test_sqa_explicit_fields_replace_generated_schedule(example_dict):
+    sqa = example_dict["solvers"]["sqa"]
+    sqa.pop("schedule")
+    sqa.update(Hp_field=[5.0, 5.0, 5.0], Hd_field=[10.0, 5.0, 0.0], num_sweeps_per_beta=2)
+    cfg = ExperimentConfig.model_validate(example_dict)
+    assert cfg.solvers.sqa.total_sweeps == 6
+
+
+def test_sqa_generated_schedule_sweeps(example_dict):
+    cfg = ExperimentConfig.model_validate(example_dict)
+    assert cfg.solvers.sqa.total_sweeps == cfg.solvers.sqa.schedule.num_steps
